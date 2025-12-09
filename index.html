@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Cessna 172 Flight Simulator</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #87CEEB; font-family: 'Courier New', Courier, monospace; }
+        #hud {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            pointer-events: none;
+        }
+        #instructions {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            color: yellow;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="hud">
+        Speed: <span id="speed">0</span> kts<br>
+        Altitude: <span id="alt">0</span> ft<br>
+        Throttle: <span id="throttle">0</span>%<br>
+        Heading: <span id="heading">0</span>°
+    </div>
+    <div id="instructions">
+        <b>Controls:</b><br>
+        W / S: Pitch Down / Up<br>
+        A / D: Roll Left / Right<br>
+        Q / E: Yaw Left / Right (Rudder)<br>
+        Shift / Ctrl: Throttle Increase / Decrease
+    </div>
+
+    <script type="module">
+        import * as THREE from 'https://unpkg.com/three@0.126.1/build/three.module.js';
+
+        // --- 1. SCENE SETUP ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87CEEB); // Sky Blue
+        scene.fog = new THREE.Fog(0x87CEEB, 200, 2000);
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 5000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // --- 2. THE GROUND (Green with Black Grid) ---
+        const gridSize = 10000;
+        const gridDivisions = 200;
+        
+        // Create the green plane
+        const groundGeo = new THREE.PlaneGeometry(gridSize, gridSize);
+        const groundMat = new THREE.MeshBasicMaterial({ color: 0x228B22 }); // Forest Green
+        const ground = new THREE.Mesh(groundGeo, groundMat);
+        ground.rotation.x = -Math.PI / 2;
+        scene.add(ground);
+
+        // Create the grid helper
+        const gridHelper = new THREE.GridHelper(gridSize, gridDivisions, 0x000000, 0x000000);
+        scene.add(gridHelper);
+
+        // --- 3. THE PLANE (Simple Representation) ---
+        // A simple group to hold the camera and simulate the plane body
+        const plane = new THREE.Group();
+        scene.add(plane);
+        
+        // Add a simple nose cone/propeller visual so you can see rotation
+        const noseGeo = new THREE.ConeGeometry(0.5, 2, 32);
+        const noseMat = new THREE.MeshNormalMaterial();
+        const nose = new THREE.Mesh(noseGeo, noseMat);
+        nose.rotation.x = Math.PI / 2;
+        nose.position.z = -2;
+        plane.add(nose);
+
+        // Set initial position (on runway)
+        plane.position.y = 2; 
+
+        // --- 4. PHYSICS VARIABLES (Cessna 172 Stats) ---
+        const physics = {
+            velocity: new THREE.Vector3(0, 0, 0),
+            rotation: new THREE.Vector3(0, 0, 0), // Pitch, Yaw, Roll rates
+            throttle: 0, // 0 to 1
+            mass: 1100, // kg
+            liftCoefficient: 0.05, // Simplified
+            dragCoefficient: 0.02,
+            thrustPower: 25000, // Newtons (approx for 160hp prop efficiency)
+            gravity: 9.81,
+            maxRollRate: 1.5,
+            maxPitchRate: 1.0,
+            maxYawRate: 0.5
+        };
+
+        const inputs = {
+            pitchUp: false, pitchDown: false,
+            rollLeft: false, rollRight: false,
+            yawLeft: false, yawRight: false,
+            throttleUp: false, throttleDown: false
+        };
+
+        // --- 5. CONTROLS ---
+        document.addEventListener('keydown', (e) => {
+            switch(e.key.toLowerCase()) {
+                case 'w': inputs.pitchDown = true; break; // Inverted flight controls
+                case 's': inputs.pitchUp = true; break;
+                case 'a': inputs.rollLeft = true; break;
+                case 'd': inputs.rollRight = true; break;
+                case 'q': inputs.yawLeft = true; break;
+                case 'e': inputs.yawRight = true; break;
+                case 'shift': inputs.throttleUp = true; break;
+                case 'control': inputs.throttleDown = true; break;
+            }
+        });
+        document.addEventListener('keyup', (e) => {
+            switch(e.key.toLowerCase()) {
+                case 'w': inputs.pitchDown = false; break;
+                case 's': inputs.pitchUp = false; break;
+                case 'a': inputs.rollLeft = false; break;
+                case 'd': inputs.rollRight = false; break;
+                case 'q': inputs.yawLeft = false; break;
+                case 'e': inputs.yawRight = false; break;
+                case 'shift': inputs.throttleUp = false; break;
+                case 'control': inputs.throttleDown = false; break;
+            }
+        });
+
+        // --- 6. PHYSICS LOOP ---
+        const clock = new THREE.Clock();
+        const AXIS_X = new THREE.Vector3(1, 0, 0);
+        const AXIS_Y = new THREE.Vector3(0, 1, 0);
+        const AXIS_Z = new THREE.Vector3(0, 0, 1);
+
+        function updatePhysics(dt) {
+            // 1. Handle Throttle
+            if (inputs.throttleUp) physics.throttle = Math.min(physics.throttle + 0.5 * dt, 1.0);
+            if (inputs.throttleDown) physics.throttle = Math.max(physics.throttle - 0.5 * dt, 0.0);
+
+            // 2. Calculate Speed (Scalar)
+            const speed = physics.velocity.length();
+
+            // 3. Calculate Forces
+            // Thrust: Always points forward (local -Z in Three.js)
+            const thrustForce = physics.throttle * physics.thrustPower;
+            
+            // Drag: Opposes velocity ( v^2 )
+            // Fd = 1/2 * rho * v^2 * Cd * A (Simplified here to speed * const)
+            const dragForce = speed * speed * physics.dragCoefficient;
+
+            // Lift: Perpendicular to wings (local Y), depends on speed
+            // Lift is complicated. For a simple sim, we assume Lift ~= Speed^2 * AngleOfAttack
+            // Here we just cheat slightly: Lift acts up relative to plane, scaling with speed.
+            const liftForce = speed * speed * physics.liftCoefficient;
+
+            // Gravity: World down
+            const gravityForce = physics.mass * physics.gravity;
+
+            // 4. Apply Forces to Velocity
+            // Get local forward and up vectors
+            const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(plane.quaternion);
+            const up = new THREE.Vector3(0, 1, 0).applyQuaternion(plane.quaternion);
+
+            // Sum of forces
+            // Thrust (Forward)
+            const fThrust = forward.clone().multiplyScalar(thrustForce);
+            // Drag (Opposite to Velocity)
+            const vDir = physics.velocity.clone().normalize();
+            const fDrag = vDir.clone().multiplyScalar(-dragForce);
+            // Lift (Up relative to plane)
+            const fLift = up.clone().multiplyScalar(liftForce);
+            // Gravity (World Down)
+            const fGravity = new THREE.Vector3(0, -gravityForce, 0);
+
+            // Total Force
+            const totalForce = new THREE.Vector3().add(fThrust).add(fDrag).add(fLift).add(fGravity);
+
+            // Acceleration = Force / Mass
+            const acceleration = totalForce.divideScalar(physics.mass);
+
+            // Update Velocity
+            physics.velocity.add(acceleration.multiplyScalar(dt));
+
+            // Ground Collision (Simple)
+            if (plane.position.y < 2) {
+                physics.velocity.y = Math.max(0, physics.velocity.y);
+                plane.position.y = 2;
+                // Friction on ground
+                physics.velocity.multiplyScalar(0.99);
+            }
+
+            // Update Position
+            plane.position.add(physics.velocity.clone().multiplyScalar(dt));
+
+            // 5. Rotation (Control Surfaces work better at high speed)
+            const controlAuthority = Math.min(speed / 20, 1.0); // Controls are sluggish at low speed
+
+            // Pitch
+            if (inputs.pitchUp) plane.rotateX(physics.maxPitchRate * controlAuthority * dt);
+            if (inputs.pitchDown) plane.rotateX(-physics.maxPitchRate * controlAuthority * dt);
+
+            // Roll
+            if (inputs.rollLeft) plane.rotateZ(physics.maxRollRate * controlAuthority * dt);
+            if (inputs.rollRight) plane.rotateZ(-physics.maxRollRate * controlAuthority * dt);
+
+            // Yaw
+            if (inputs.yawLeft) plane.rotateY(physics.maxYawRate * controlAuthority * dt);
+            if (inputs.yawRight) plane.rotateY(-physics.maxYawRate * controlAuthority * dt);
+            
+            // Banking naturally turns the plane (Aerodynamic banking)
+            // If you roll, the lift vector tilts, pulling the plane sideways.
+            // We simulate this by rotating Yaw based on Roll angle.
+            const rollAngle = plane.rotation.z;
+            plane.rotateY(-rollAngle * 0.5 * dt * controlAuthority); // Simplified coordinated turn
+        }
+
+        // --- 7. RENDER LOOP ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const dt = Math.min(clock.getDelta(), 0.1); // Limit delta to avoid glitches
+            updatePhysics(dt);
+
+            // Update HUD
+            const kts = (physics.velocity.length() * 1.94384).toFixed(0); // m/s to knots
+            const alt = ((plane.position.y - 2) * 3.28084).toFixed(0); // meters to ft
+            document.getElementById('speed').innerText = kts;
+            document.getElementById('alt').innerText = alt;
+            document.getElementById('throttle').innerText = (physics.throttle * 100).toFixed(0);
+            
+            // Camera follows plane (Cockpit view / Chase view hybrid)
+            // Position camera slightly behind and above
+            const relativeOffset = new THREE.Vector3(0, 5, 15);
+            const cameraOffset = relativeOffset.applyMatrix4(plane.matrixWorld);
+            
+            // Smooth follow
+            camera.position.lerp(cameraOffset, 0.1);
+            camera.lookAt(plane.position);
+
+            renderer.render(scene, camera);
+        }
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>
