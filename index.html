@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Plane - Inverted Pitch</title>
+    <title>3D Plane - Smooth Arcade</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #87CEEB; }
         
@@ -51,13 +51,12 @@
     <div id="ui-layer">
         <div id="instructions">
             <h2>Flight Controls</h2>
-            <p><span class="key">0</span> - Cut Engine (0%)</p>
-            <p><span class="key">1 - 9</span> - Throttle (10% - 90%)</p>
-            <p><span class="key">q</span> - Max Power (100%)</p>
-            <p><span class="key">↑</span> - Nose Down (Dive)</p>
-            <p><span class="key">↓</span> - Nose Up (Climb)</p>
-            <p><span class="key">← / →</span> - Bank Left / Right</p>
-            <p><i>To Land: Speed < 40kts + Level Wings</i></p>
+            <p><span class="key">0</span> - Engine Cut</p>
+            <p><span class="key">1 - 9</span> - Throttle %</p>
+            <p><span class="key">q</span> - MAX POWER</p>
+            <p><span class="key">↑</span> - Pitch Up (Climb)</p>
+            <p><span class="key">↓</span> - Pitch Down (Dive)</p>
+            <p><span class="key">← / →</span> - Smooth Bank</p>
         </div>
 
         <div id="dashboard">
@@ -86,7 +85,7 @@
         // --- 1. SETUP ---
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x87CEEB);
-        scene.fog = new THREE.Fog(0x87CEEB, 20, 600);
+        scene.fog = new THREE.Fog(0x87CEEB, 20, 700);
 
         const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -94,48 +93,54 @@
         renderer.shadowMap.enabled = true;
         document.body.appendChild(renderer.domElement);
 
-        // --- 2. LIGHTS ---
+        // --- 2. LIGHTING ---
         const ambientLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
         scene.add(ambientLight);
         const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
         dirLight.position.set(50, 200, 100);
         dirLight.castShadow = true;
         dirLight.shadow.mapSize.width = 2048; dirLight.shadow.mapSize.height = 2048;
-        const d = 200;
+        const d = 300;
         dirLight.shadow.camera.left = -d; dirLight.shadow.camera.right = d;
         dirLight.shadow.camera.top = d; dirLight.shadow.camera.bottom = -d;
         scene.add(dirLight);
 
-        // --- 3. PLANE (Corrected Orientation) ---
+        // --- 3. PLANE ---
         let propeller;
         function createPlane() {
             const planeGroup = new THREE.Group();
-            const bodyMat = new THREE.MeshPhongMaterial({ color: 0xe74c3c, flatShading: true });
-            const whiteMat = new THREE.MeshPhongMaterial({ color: 0xecf0f1, flatShading: true });
-            const darkMat = new THREE.MeshPhongMaterial({ color: 0x2c3e50, flatShading: true });
+            
+            // Materials
+            const bodyMat = new THREE.MeshPhongMaterial({ color: 0xff3333, flatShading: true });
+            const whiteMat = new THREE.MeshPhongMaterial({ color: 0xffffff, flatShading: true });
+            const darkMat = new THREE.MeshPhongMaterial({ color: 0x333333, flatShading: true });
 
-            // Nose points to -Z
-            const bodyGeo = new THREE.ConeGeometry(0.8, 4, 8);
+            // Body
+            const bodyGeo = new THREE.ConeGeometry(0.8, 4, 12);
             bodyGeo.rotateX(-Math.PI / 2); 
             const body = new THREE.Mesh(bodyGeo, bodyMat);
             body.castShadow = true; planeGroup.add(body);
 
-            const cockpit = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.9, 1.2), darkMat);
+            // Cockpit
+            const cockpit = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 1.2), darkMat);
             cockpit.position.set(0, 0.4, 0);
             cockpit.castShadow = true; planeGroup.add(cockpit);
 
-            const wings = new THREE.Mesh(new THREE.BoxGeometry(6, 0.1, 1.5), whiteMat);
+            // Wings (Wider for better look)
+            const wings = new THREE.Mesh(new THREE.BoxGeometry(8, 0.1, 1.8), whiteMat);
             wings.castShadow = true; planeGroup.add(wings);
 
-            const tail = new THREE.Mesh(new THREE.BoxGeometry(2, 0.1, 1), whiteMat);
+            // Tail
+            const tail = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.1, 1.2), whiteMat);
             tail.position.set(0, 0, 1.6);
             tail.castShadow = true; planeGroup.add(tail);
 
-            const rudder = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.2, 1), whiteMat);
-            rudder.position.set(0, 0.6, 1.6);
+            const rudder = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.4, 1), whiteMat);
+            rudder.position.set(0, 0.7, 1.6);
             rudder.castShadow = true; planeGroup.add(rudder);
 
-            propeller = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.1, 0.2), darkMat);
+            // Prop
+            propeller = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.1, 0.25), darkMat);
             propeller.position.set(0, 0, -2);
             planeGroup.add(propeller);
 
@@ -146,49 +151,47 @@
 
         // --- 4. WORLD ---
         const floor = new THREE.Mesh(
-            new THREE.PlaneGeometry(4000, 4000), 
-            new THREE.MeshStandardMaterial({ color: 0x4CAF50 })
+            new THREE.PlaneGeometry(5000, 5000), 
+            new THREE.MeshStandardMaterial({ color: 0x579e3e }) // Darker grass
         );
         floor.rotation.x = -Math.PI / 2;
         floor.position.y = -50;
         floor.receiveShadow = true;
         scene.add(floor);
         
-        // Runway
         const runway = new THREE.Mesh(
-            new THREE.PlaneGeometry(200, 1000),
-            new THREE.MeshStandardMaterial({ color: 0x555555 })
+            new THREE.PlaneGeometry(300, 2000),
+            new THREE.MeshStandardMaterial({ color: 0x444444 })
         );
         runway.rotation.x = -Math.PI / 2;
         runway.position.y = -49.9;
         runway.receiveShadow = true;
         scene.add(runway);
 
-        // --- 5. STATE ---
+        // --- 5. PHYSICS & CONTROLS ---
         const keys = { ArrowUp:false, ArrowDown:false, ArrowLeft:false, ArrowRight:false };
         
-        // Physics
         let speed = 0;
-        let throttle = 0; // 0.0 to 1.0
+        let throttle = 0;
         let rotVel = { x: 0, y: 0, z: 0 }; 
         let isCrashed = false;
-        let isLanded = true; // Start on ground
+        let isLanded = true;
         
-        // Constants
-        const MAX_SPEED = 2.0;
-        const TAKEOFF_SPEED = 0.6;
+        // Tuning Constants (The "Feel")
+        const MAX_SPEED = 2.2;
         const GRAVITY = 0.4;
-        const LIFT_FACTOR = 0.45; 
-        const FRICTION = 0.96;
+        const LIFT_FACTOR = 0.45;
+        const ROT_ACCEL = 0.0025; // Lower = Smoother handling
+        const FRICTION = 0.95;    // Higher (0-1) = More slide/floaty
+        const AUTO_LEVEL = 0.03;  // Strength of auto-leveling wings
         
-        // UI Elements
+        // UI
         const uiThrottle = document.getElementById('throttle-ui');
         const uiSpeed = document.getElementById('speed-ui');
         const uiAlt = document.getElementById('alt-ui');
         const msgOverlay = document.getElementById('msg-overlay');
         const msgText = document.getElementById('msg-text');
 
-        // Input Listeners
         window.addEventListener('keydown', (e) => {
             if (keys.hasOwnProperty(e.code)) keys[e.code] = true; 
             if (e.key === "ArrowUp") keys.ArrowUp = true;
@@ -197,12 +200,9 @@
             if (e.key === "ArrowRight") keys.ArrowRight = true;
             if (e.code === 'KeyR') resetGame();
 
-            // Throttle Controls
             if (e.key === '0') throttle = 0.0;
             if (e.key === 'q') throttle = 1.0;
-            if (e.key >= '1' && e.key <= '9') {
-                throttle = parseInt(e.key) / 10;
-            }
+            if (e.key >= '1' && e.key <= '9') throttle = parseInt(e.key) / 10;
         });
 
         window.addEventListener('keyup', (e) => {
@@ -214,7 +214,7 @@
         });
 
         function resetGame() {
-            airplane.position.set(0, -48, 0); // Start on runway
+            airplane.position.set(0, -48, 0);
             airplane.rotation.set(0, 0, 0);
             speed = 0;
             throttle = 0;
@@ -224,33 +224,41 @@
             msgOverlay.style.display = 'none';
         }
 
-        // Start on ground
         resetGame();
 
         function updatePhysics() {
             if (isCrashed) return;
 
-            // 1. Throttle Logic
+            // --- Throttle Smoothing ---
             let targetSpeed = throttle * MAX_SPEED;
-            speed = THREE.MathUtils.lerp(speed, targetSpeed, 0.01);
+            speed = THREE.MathUtils.lerp(speed, targetSpeed, 0.015); // Engine inertia
 
-            // 2. Flight Controls (Only work if moving fast enough or in air)
-            const controlAuthority = Math.min(speed, 1.0); 
+            // --- Control Authority ---
+            // You can't turn if you aren't moving (unless on ground taxiing)
+            const authority = Math.min(speed, 1.2); 
 
             if (!isLanded || speed > 0.2) {
-                // FLIGHT SIM STYLE (INVERTED PITCH)
-                // ArrowUp = Positive Rotation (Nose Down)
-                // ArrowDown = Negative Rotation (Nose Up)
-                if (keys.ArrowUp) rotVel.x += 0.003 * controlAuthority; 
-                if (keys.ArrowDown) rotVel.x -= 0.003 * controlAuthority;
+                // ARCADE PITCH: Up Arrow = Nose Up (Negative X Rot)
+                if (keys.ArrowUp) rotVel.x -= ROT_ACCEL * authority; 
+                if (keys.ArrowDown) rotVel.x += ROT_ACCEL * authority;
                 
+                // BANKING
                 if (keys.ArrowLeft) {
-                    rotVel.z += 0.003 * controlAuthority;
-                    rotVel.y += 0.001 * controlAuthority;
+                    rotVel.z += ROT_ACCEL * authority; // Roll Left
+                    rotVel.y += (ROT_ACCEL * 0.4) * authority; // Gentle Yaw Left
                 }
                 if (keys.ArrowRight) {
-                    rotVel.z -= 0.003 * controlAuthority;
-                    rotVel.y -= 0.001 * controlAuthority;
+                    rotVel.z -= ROT_ACCEL * authority;
+                    rotVel.y -= (ROT_ACCEL * 0.4) * authority;
+                }
+
+                // AUTO-LEVELING (Smoothness Factor)
+                // If not pressing turn keys, gently bring wings level
+                if (!keys.ArrowLeft && !keys.ArrowRight) {
+                    // Pull Z rotation towards 0
+                    rotVel.z += -airplane.rotation.z * AUTO_LEVEL * authority;
+                    // Dampen Yaw spin
+                    rotVel.y *= 0.9; 
                 }
             }
 
@@ -259,80 +267,74 @@
             airplane.rotateY(rotVel.y);
             airplane.rotateZ(rotVel.z);
             
-            // Friction
+            // Apply Friction (Damping)
             rotVel.x *= FRICTION;
             rotVel.y *= FRICTION;
             rotVel.z *= FRICTION;
 
-            // 3. Movement
+            // Move Forward
             airplane.translateZ(-speed);
 
-            // 4. Gravity & Lift
+            // Gravity / Lift
             if (!isLanded) {
                 airplane.position.y -= GRAVITY;
                 airplane.position.y += speed * LIFT_FACTOR;
             } else {
-                // If landed, stick to ground unless we have takeoff speed and pitch up (negative X rot)
-                if (speed > TAKEOFF_SPEED && rotVel.x < -0.001) {
+                // Takeoff logic
+                if (speed > 0.6 && rotVel.x < -0.001) {
                     isLanded = false;
                     msgOverlay.style.display = 'none';
                 }
             }
 
-            // 5. Landing / Crash Logic
+            // --- Crash / Land Logic ---
             const altitude = airplane.position.y + 50;
-            
             if (altitude <= 2 && !isLanded) {
-                // Get rotation angles (roughly)
-                const pitch = airplane.rotation.x % (Math.PI * 2);
-                const roll = airplane.rotation.z % (Math.PI * 2);
+                const pitch = airplane.rotation.x % (Math.PI*2);
+                const roll = airplane.rotation.z % (Math.PI*2);
                 
-                // Crash Conditions:
-                // 1. Too fast (> 35% max speed)
-                // 2. Too much bank (> 20 degrees)
-                // 3. Nose diving too hard (> 20 degrees)
-                const isTooFast = speed > (MAX_SPEED * 0.35);
-                const isBadAngle = Math.abs(roll) > 0.35 || Math.abs(pitch) > 0.35;
+                // Allow slightly rougher landings
+                const isTooFast = speed > (MAX_SPEED * 0.4); 
+                const isBadAngle = Math.abs(roll) > 0.5 || Math.abs(pitch) > 0.5;
 
                 if (isTooFast || isBadAngle) {
                     isCrashed = true;
                     msgOverlay.className = 'crash';
-                    msgText.innerText = "CRASHED!";
+                    msgText.innerText = "CRASHED";
                     msgOverlay.style.display = 'block';
                 } else {
-                    // Safe Landing
                     isLanded = true;
-                    airplane.position.y = -48; // Snap to floor
-                    
-                    // Auto-level wings slightly on successful landing
-                    airplane.rotation.z = 0;
-                    airplane.rotation.x = 0;
-                    
+                    airplane.position.y = -48;
+                    airplane.rotation.z = 0; // Snap wings level
+                    airplane.rotation.x = 0; // Snap pitch level
                     msgOverlay.className = 'landed';
-                    msgText.innerText = "LANDED SAFE";
+                    msgText.innerText = "LANDED";
                     msgOverlay.style.display = 'block';
                 }
             }
-            
-            // Floor clamp if landed
-            if (isLanded) {
-                airplane.position.y = -48;
-            }
+            if (isLanded) airplane.position.y = -48;
 
-            // Propeller visual
+            // Visuals
             if(propeller) propeller.rotation.z += speed;
-
-            // UI Updates
             uiThrottle.innerText = Math.floor(throttle * 100);
             uiSpeed.innerText = Math.floor(speed * 100);
             uiAlt.innerText = Math.floor(Math.max(0, altitude));
         }
 
+        // --- Smooth Camera ---
         function updateCamera() {
-            const offset = new THREE.Vector3(0, 8, 20); 
+            // Calculate where the camera *wants* to be
+            const offset = new THREE.Vector3(0, 7, 25); 
             const targetPos = offset.applyMatrix4(airplane.matrixWorld);
-            camera.position.lerp(targetPos, 0.1);
-            camera.lookAt(airplane.position);
+            
+            // "Lerp" allows the camera to lag behind, creating a sense of speed
+            // Lower number (0.04) = More cinematic lag
+            camera.position.lerp(targetPos, 0.04);
+            
+            // Look slightly ahead of the plane, not directly at it
+            const lookOffset = new THREE.Vector3(0, 0, -20);
+            const lookTarget = lookOffset.applyMatrix4(airplane.matrixWorld);
+            camera.lookAt(lookTarget);
         }
 
         function animate() {
@@ -340,6 +342,7 @@
             updatePhysics();
             updateCamera();
             
+            // Shadows follow plane
             dirLight.position.x = airplane.position.x + 50;
             dirLight.position.z = airplane.position.z + 50;
             dirLight.target = airplane;
