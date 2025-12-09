@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cessna 172 - Free Flight</title>
+    <title>Cessna 172 - Free Flight (Fixed Visuals)</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #87CEEB; }
         
@@ -80,53 +80,66 @@
         // --- 1. SETUP ---
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x87CEEB);
-        scene.fog = new THREE.Fog(0x87CEEB, 100, 4000);
+        // Improved Fog to blend horizon better
+        scene.fog = new THREE.Fog(0x87CEEB, 200, 5000);
 
         const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 10000);
         
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.shadowMap.enabled = true;
-        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Softer shadows
         document.body.appendChild(renderer.domElement);
 
-        // --- 2. LIGHTING ---
-        const ambientLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.0);
+        // --- 2. LIGHTING (FIXED SHADOWS) ---
+        // Reduced ambient light so shadows appear darker/clearer
+        const ambientLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
         scene.add(ambientLight);
-        const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
-        dirLight.position.set(200, 500, 300);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+        dirLight.position.set(100, 500, 200);
         dirLight.castShadow = true;
+        
+        // Shadow High Res Settings
         dirLight.shadow.mapSize.width = 4096; 
         dirLight.shadow.mapSize.height = 4096;
-        const d = 1500;
+        dirLight.shadow.bias = -0.0005; // Prevents shadow artifacts
+        
+        const d = 1000;
         dirLight.shadow.camera.left = -d; dirLight.shadow.camera.right = d;
         dirLight.shadow.camera.top = d; dirLight.shadow.camera.bottom = -d;
         scene.add(dirLight);
 
-        // --- 3. CESSNA 172 MODEL (ACCURATE SHAPE) ---
+        // --- 3. CESSNA 172 MODEL ---
         let propeller, yokeMount, yokeWheel, firstPersonRig;
         
         function createCessna() {
             const planeGroup = new THREE.Group();
             
-            // Materials
-            const paintMat = new THREE.MeshPhongMaterial({ color: 0xffffff, shininess: 50 }); 
-            const interiorMat = new THREE.MeshPhongMaterial({ color: 0xd6cfa2, flatShading: true }); 
-            const dashMat = new THREE.MeshPhongMaterial({ color: 0x2c3e50, flatShading: true }); 
-            const blackMat = new THREE.MeshPhongMaterial({ color: 0x111111 });
-            const chromeMat = new THREE.MeshPhongMaterial({ color: 0xcccccc, shininess: 100 });
-            const glassMat = new THREE.MeshPhongMaterial({ 
+            // Materials - Improved
+            const paintMat = new THREE.MeshStandardMaterial({ 
+                color: 0xffffff, 
+                roughness: 0.4, 
+                metalness: 0.1 
+            }); 
+            const interiorMat = new THREE.MeshStandardMaterial({ color: 0xd6cfa2, roughness: 0.8 }); 
+            const dashMat = new THREE.MeshStandardMaterial({ color: 0x2c3e50, roughness: 0.7 }); 
+            const chromeMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.2, metalness: 0.8 });
+            
+            // Glass - More realistic reflection
+            const glassMat = new THREE.MeshPhysicalMaterial({ 
                 color: 0x88ccff, 
-                opacity: 0.25, 
+                opacity: 0.3, 
                 transparent: true, 
+                roughness: 0.0,
+                metalness: 0.1,
                 side: THREE.DoubleSide 
             });
-            const propMat = new THREE.MeshPhongMaterial({ color: 0x222222 });
+            const propMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.5 });
+            const stripeMat = new THREE.MeshStandardMaterial({ color: 0xcc0000, roughness: 0.4 });
 
-            // --- A. FUSELAGE (Extruded Shape Method) ---
+            // --- A. FUSELAGE ---
             const shape = new THREE.Shape();
-            
-            // Accurate Profile (Side view)
             shape.moveTo(0, 0.5); 
             shape.lineTo(0, -0.5); 
             shape.lineTo(-6, -0.5); 
@@ -144,40 +157,40 @@
 
             const extrudeSettings = {
                 steps: 1, depth: 2.4, bevelEnabled: true,
-                bevelThickness: 0.1, bevelSize: 0.1, bevelSegments: 2
+                bevelThickness: 0.2, bevelSize: 0.2, bevelSegments: 3 // Smoother edges
             };
 
             const fuselageMesh = new THREE.Mesh(new THREE.ExtrudeGeometry(shape, extrudeSettings), paintMat);
             fuselageMesh.position.set(0, 0, -1.2); 
             fuselageMesh.rotation.y = -Math.PI / 2;
             fuselageMesh.castShadow = true;
+            fuselageMesh.receiveShadow = true;
             planeGroup.add(fuselageMesh);
 
             // --- B. GLASS ---
-            // Windshield
-            const windShield = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 2.2), glassMat);
-            windShield.position.set(0, 2.5, -4.6);
+            const windShield = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 2.3), glassMat);
+            windShield.position.set(0, 2.55, -4.6);
             windShield.rotation.x = -0.7; 
             planeGroup.add(windShield);
 
-            // Side Windows
             const sideWinGeo = new THREE.PlaneGeometry(3.0, 1.2);
             const winL = new THREE.Mesh(sideWinGeo, glassMat);
             winL.position.set(1.26, 2.4, -2.5); winL.rotation.y = -Math.PI/2; planeGroup.add(winL);
             const winR = new THREE.Mesh(sideWinGeo, glassMat);
             winR.position.set(-1.26, 2.4, -2.5); winR.rotation.y = Math.PI/2; planeGroup.add(winR);
 
-            // Rear Windows
-            const rearWinGeo = new THREE.PlaneGeometry(1.5, 1.0);
-            const rWinL = new THREE.Mesh(rearWinGeo, glassMat);
-            rWinL.position.set(1.26, 2.4, -0.2); rWinL.rotation.y = -Math.PI/2; planeGroup.add(rWinL);
-            const rWinR = new THREE.Mesh(rearWinGeo, glassMat);
-            rWinR.position.set(-1.26, 2.4, -0.2); rWinR.rotation.y = Math.PI/2; planeGroup.add(rWinR);
-
             // --- C. WINGS ---
-            const wings = new THREE.Mesh(new THREE.BoxGeometry(36, 0.5, 5.5), paintMat);
-            wings.position.set(0, 3.4, -2.5); 
+            // Added curvature to wing for better look
+            const wingGeo = new THREE.BoxGeometry(36, 0.6, 5.5);
+            const wings = new THREE.Mesh(wingGeo, paintMat);
+            wings.position.set(0, 3.5, -2.5); 
             wings.castShadow = true; planeGroup.add(wings);
+
+            // Wing Stripes
+            const stripeL = new THREE.Mesh(new THREE.BoxGeometry(2, 0.65, 5.6), stripeMat);
+            stripeL.position.set(10, 3.5, -2.5); planeGroup.add(stripeL);
+            const stripeR = new THREE.Mesh(new THREE.BoxGeometry(2, 0.65, 5.6), stripeMat);
+            stripeR.position.set(-10, 3.5, -2.5); planeGroup.add(stripeR);
 
             // Struts
             const strutGeo = new THREE.CylinderGeometry(0.1, 0.1, 7);
@@ -187,29 +200,29 @@
             strutR.position.set(-4, 1.0, -2.5); strutR.rotation.z = 0.8; planeGroup.add(strutR);
 
             // --- D. TAIL ---
-            const hStab = new THREE.Mesh(new THREE.BoxGeometry(10, 0.3, 3), paintMat);
+            const hStab = new THREE.Mesh(new THREE.BoxGeometry(11, 0.3, 3), paintMat);
             hStab.position.set(0, 1.5, 7.5); hStab.castShadow = true; planeGroup.add(hStab);
 
             // --- E. LANDING GEAR ---
-            const gearL = new THREE.Mesh(new THREE.BoxGeometry(0.5, 3, 0.15), chromeMat);
+            const gearL = new THREE.Mesh(new THREE.BoxGeometry(0.5, 3, 0.2), chromeMat);
             gearL.position.set(2.5, -1.0, -2.0); gearL.rotation.z = -0.4; planeGroup.add(gearL);
-            const pantL = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.0, 1.5), paintMat);
-            pantL.position.set(3.8, -2.2, -2.0); planeGroup.add(pantL);
+            const pantL = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.0, 1.6), paintMat);
+            pantL.position.set(3.8, -2.2, -2.0); pantL.castShadow = true; planeGroup.add(pantL);
             
-            const gearR = new THREE.Mesh(new THREE.BoxGeometry(0.5, 3, 0.15), chromeMat);
+            const gearR = new THREE.Mesh(new THREE.BoxGeometry(0.5, 3, 0.2), chromeMat);
             gearR.position.set(-2.5, -1.0, -2.0); gearR.rotation.z = 0.4; planeGroup.add(gearR);
-            const pantR = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.0, 1.5), paintMat);
-            pantR.position.set(-3.8, -2.2, -2.0); planeGroup.add(pantR);
+            const pantR = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.0, 1.6), paintMat);
+            pantR.position.set(-3.8, -2.2, -2.0); pantR.castShadow = true; planeGroup.add(pantR);
 
             const nStrut = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 2.0), chromeMat);
             nStrut.position.set(0, -0.5, -6.0); planeGroup.add(nStrut);
-            const nPant = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.0, 1.5), paintMat);
-            nPant.position.set(0, -1.8, -6.0); planeGroup.add(nPant);
+            const nPant = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.0, 1.6), paintMat);
+            nPant.position.set(0, -1.8, -6.0); nPant.castShadow = true; planeGroup.add(nPant);
 
             // --- F. PROPELLER ---
             propeller = new THREE.Group();
             propeller.position.set(0, 1.0, -8.1); 
-            const spinner = new THREE.Mesh(new THREE.ConeGeometry(0.6, 1.2, 16).rotateX(-Math.PI/2), chromeMat);
+            const spinner = new THREE.Mesh(new THREE.ConeGeometry(0.6, 1.2, 32).rotateX(-Math.PI/2), chromeMat);
             propeller.add(spinner);
             const blades = new THREE.Mesh(new THREE.BoxGeometry(7.6, 0.3, 0.15), propMat);
             propeller.add(blades);
@@ -222,11 +235,11 @@
 
             const panel = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.8, 0.2), dashMat);
             dashGroup.add(panel);
-            const shield = new THREE.Mesh(new THREE.BoxGeometry(2.35, 0.1, 0.5), blackMat);
+            const shield = new THREE.Mesh(new THREE.BoxGeometry(2.35, 0.1, 0.5), new THREE.MeshStandardMaterial({color: 0x111111}));
             shield.position.set(0, 0.45, 0.1); dashGroup.add(shield);
 
             // Gauges
-            const gaugeGeo = new THREE.CylinderGeometry(0.2, 0.2, 0.05, 16).rotateX(Math.PI/2);
+            const gaugeGeo = new THREE.CylinderGeometry(0.2, 0.2, 0.05, 32).rotateX(Math.PI/2);
             const gaugeBlack = new THREE.MeshBasicMaterial({ color: 0x000000 });
             for(let i=0; i<3; i++) { 
                 const g = new THREE.Mesh(gaugeGeo, gaugeBlack);
@@ -260,10 +273,10 @@
             yokeWheel = new THREE.Group();
             yokeWheel.position.z = 1.2; 
             yokeMount.add(yokeWheel);
-            yokeWheel.add(new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.15, 0.1), blackMat));
-            const hL = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.5).rotateZ(Math.PI/2), blackMat);
+            yokeWheel.add(new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.15, 0.1), new THREE.MeshStandardMaterial({color: 0x000000})));
+            const hL = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.5).rotateZ(Math.PI/2), new THREE.MeshStandardMaterial({color: 0x000000}));
             hL.position.set(-0.25, 0, 0); yokeWheel.add(hL);
-            const hR = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.5).rotateZ(Math.PI/2), blackMat);
+            const hR = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.5).rotateZ(Math.PI/2), new THREE.MeshStandardMaterial({color: 0x000000}));
             hR.position.set(0.25, 0, 0); yokeWheel.add(hR);
 
             // --- I. CAMERA RIG ---
@@ -277,11 +290,34 @@
         const airplane = createCessna();
         scene.add(airplane);
 
-        // --- 4. WORLD ---
+        // --- 4. WORLD (FIXED RUNWAY GLITCH) ---
+        // Grass
         const floor = new THREE.Mesh(new THREE.PlaneGeometry(20000, 20000), new THREE.MeshStandardMaterial({ color: 0x579e3e }));
-        floor.rotation.x = -Math.PI / 2; floor.position.y = -50; floor.receiveShadow = true; scene.add(floor);
-        const runway = new THREE.Mesh(new THREE.PlaneGeometry(800, 20000), new THREE.MeshStandardMaterial({ color: 0x444444 }));
-        runway.rotation.x = -Math.PI / 2; runway.position.y = -49.8; runway.receiveShadow = true; scene.add(runway);
+        floor.rotation.x = -Math.PI / 2; 
+        floor.position.y = -50; 
+        floor.receiveShadow = true; 
+        scene.add(floor);
+
+        // Runway - Raised Y position to -49.0 to prevent Z-Fighting with floor at -50
+        const runwayMat = new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 0.9 });
+        const runway = new THREE.Mesh(new THREE.PlaneGeometry(800, 20000), runwayMat);
+        runway.rotation.x = -Math.PI / 2; 
+        runway.position.y = -49.0; // FIXED: Raised gap significantly
+        runway.receiveShadow = true; 
+        scene.add(runway);
+
+        // Runway markings (optional visual improvement)
+        const lineGeo = new THREE.PlaneGeometry(20, 100);
+        const lineMat = new THREE.MeshBasicMaterial({color: 0xffffff});
+        const lines = new THREE.InstancedMesh(lineGeo, lineMat, 50);
+        const dummy = new THREE.Object3D();
+        for(let i=0; i<50; i++) {
+            dummy.position.set(0, -48.9, -9000 + (i * 400));
+            dummy.rotation.x = -Math.PI/2;
+            dummy.updateMatrix();
+            lines.setMatrixAt(i, dummy.matrix);
+        }
+        scene.add(lines);
 
         // --- 5. LOGIC ---
         const keys = { ArrowUp:false, ArrowDown:false, ArrowLeft:false, ArrowRight:false };
@@ -371,27 +407,18 @@
                 }
             }
 
-            // GROUND COLLISION (NO CRASH)
+            // GROUND COLLISION
             const altitude = airplane.position.y + 42; 
             if (altitude <= 0) { 
-                // We hit ground
                 airplane.position.y = -42;
                 isLanded = true;
 
-                // Simple "Bounce" or "Slide" logic
-                // Reset heavy banks instantly so you don't roll over
-                if(Math.abs(airplane.rotation.z) > 0.5) {
-                    airplane.rotation.z *= 0.8; 
-                }
-                // Reset Pitch if nose down to prevent digging
-                if(airplane.rotation.x > 0.1) {
-                    airplane.rotation.x = 0;
-                }
+                if(Math.abs(airplane.rotation.z) > 0.5) airplane.rotation.z *= 0.8; 
+                if(airplane.rotation.x > 0.1) airplane.rotation.x = 0;
 
-                // Check for smooth landing
                 const pitch = airplane.rotation.x % (Math.PI*2);
                 if (speed < 0.8 && Math.abs(pitch) < 0.1) {
-                    msgOverlay.style.display = 'block'; // "Perfect Landing"
+                    msgOverlay.style.display = 'block'; 
                 } else {
                     msgOverlay.style.display = 'none';
                 }
