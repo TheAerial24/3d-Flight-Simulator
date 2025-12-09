@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>GeoFS-Style C172 Flight Sim (Ground Start)</title>
+  <title>Jet Flight Sim (Ground Start, Infinite World)</title>
   <style>
     html, body {
       margin: 0;
@@ -42,12 +42,11 @@
   <div id="hud"></div>
   <div id="help">
     Controls:<br>
-    Throttle: 0–9 (0 = idle, 9 = full)<br>
+    Throttle: 1–9 (1 = low, 9 = full)<br>
     Pitch: Up/Down arrows (Down = nose up)<br>
     Roll: Left/Right arrows<br>
-    Yaw: A / D<br>
     View: V (1st / 3rd person)<br>
-    Reset: R (back on the runway)
+    Reset: R (back on the ground)
   </div>
 
   <!-- Three.js from CDN -->
@@ -56,7 +55,7 @@
   <script>
     // ===== BASIC THREE.JS SETUP =====
     const scene = new THREE.Scene();
-    scene.fog = new THREE.Fog(0x87ceeb, 5000, 20000);
+    scene.fog = new THREE.Fog(0x87ceeb, 8000, 30000);
     scene.background = new THREE.Color(0x87ceeb); // sky
 
     const camera = new THREE.PerspectiveCamera(
@@ -79,8 +78,8 @@
     dirLight.position.set(300, 400, 200);
     scene.add(dirLight);
 
-    // ===== GROUND: GREEN WITH WHITE GRID =====
-    const groundSize = 40000;
+    // ===== GROUND: GREEN WITH WHITE GRID (BIG) =====
+    const groundSize = 50000;
     const groundGeo = new THREE.PlaneGeometry(groundSize, groundSize);
     const groundMat = new THREE.MeshPhongMaterial({ color: 0x1b7a1b });
     const ground = new THREE.Mesh(groundGeo, groundMat);
@@ -88,77 +87,88 @@
     ground.receiveShadow = true;
     scene.add(ground);
 
-    const grid = new THREE.GridHelper(groundSize, 400, 0xffffff, 0xffffff);
+    const grid = new THREE.GridHelper(groundSize, 500, 0xffffff, 0xffffff);
     grid.position.y = 0.05;
     scene.add(grid);
 
-    // ===== C172 MODEL (BUILT FROM PRIMITIVES) =====
+    // ===== JET MODEL (BUILT FROM PRIMITIVES) =====
     const plane = new THREE.Group();
 
-    // Fuselage
-    const fuselageGeo = new THREE.CylinderGeometry(0.7, 0.9, 8, 24, 1, false);
-    const fuselageMat = new THREE.MeshPhongMaterial({ color: 0xffffff });
+    // Fuselage (slim, long)
+    const fuselageGeo = new THREE.CylinderGeometry(0.4, 0.7, 10, 24);
+    const fuselageMat = new THREE.MeshPhongMaterial({ color: 0xdddddd });
     const fuselage = new THREE.Mesh(fuselageGeo, fuselageMat);
     fuselage.rotation.z = Math.PI / 2;
     plane.add(fuselage);
 
-    // Nose
-    const noseGeo = new THREE.ConeGeometry(0.9, 1.4, 24);
-    const noseMat = new THREE.MeshPhongMaterial({ color: 0xd0d0d0 });
+    // Nose (sharp)
+    const noseGeo = new THREE.ConeGeometry(0.6, 2.0, 24);
+    const noseMat = new THREE.MeshPhongMaterial({ color: 0xaaaaaa });
     const nose = new THREE.Mesh(noseGeo, noseMat);
     nose.rotation.z = -Math.PI / 2;
-    nose.position.set(4.5, 0, 0);
+    nose.position.set(5.5, 0, 0);
     plane.add(nose);
 
-    // Cabin (glass-ish)
-    const cabinGeo = new THREE.BoxGeometry(2.5, 1.6, 1.8);
-    const cabinMat = new THREE.MeshPhongMaterial({
+    // Cockpit canopy
+    const canopyGeo = new THREE.SphereGeometry(0.7, 16, 16, 0, Math.PI * 2, 0, Math.PI / 1.5);
+    const canopyMat = new THREE.MeshPhongMaterial({
       color: 0x99b7ff,
       transparent: true,
       opacity: 0.8
     });
-    const cabin = new THREE.Mesh(cabinGeo, cabinMat);
-    cabin.position.set(1, 0.7, 0);
-    plane.add(cabin);
+    const canopy = new THREE.Mesh(canopyGeo, canopyMat);
+    canopy.scale.set(1.4, 1.0, 1.4);
+    canopy.position.set(1.5, 0.5, 0);
+    plane.add(canopy);
 
-    // Wings
-    const wingGeo = new THREE.BoxGeometry(11, 0.3, 1.8);
-    const wingMat = new THREE.MeshPhongMaterial({ color: 0xffffff });
-    const wing = new THREE.Mesh(wingGeo, wingMat);
-    wing.position.set(0, 1.1, 0);
-    plane.add(wing);
+    // Swept wings
+    const wingGeo = new THREE.BoxGeometry(10, 0.2, 3);
+    const wingMat = new THREE.MeshPhongMaterial({ color: 0xcccccc });
+    const leftWing = new THREE.Mesh(wingGeo, wingMat);
+    leftWing.position.set(0, 0, -2.5);
+    leftWing.rotation.y = Math.PI / 10;
+    plane.add(leftWing);
+    const rightWing = leftWing.clone();
+    rightWing.position.z = 2.5;
+    rightWing.rotation.y = -Math.PI / 10;
+    plane.add(rightWing);
 
-    // Horizontal stabilizer
-    const hStabGeo = new THREE.BoxGeometry(3.5, 0.2, 1);
-    const hStabMat = new THREE.MeshPhongMaterial({ color: 0xffffff });
-    const hStab = new THREE.Mesh(hStabGeo, hStabMat);
-    hStab.position.set(-3.6, 0.5, 0);
-    plane.add(hStab);
+    // Tailplane (horizontal stabilizers)
+    const tailWingGeo = new THREE.BoxGeometry(4, 0.15, 1.5);
+    const tailWingMat = new THREE.MeshPhongMaterial({ color: 0xcccccc });
+    const tailLeft = new THREE.Mesh(tailWingGeo, tailWingMat);
+    tailLeft.position.set(-4.5, 0.3, -1.2);
+    tailLeft.rotation.y = Math.PI / 10;
+    plane.add(tailLeft);
+    const tailRight = tailLeft.clone();
+    tailRight.position.z = 1.2;
+    tailRight.rotation.y = -Math.PI / 10;
+    plane.add(tailRight);
 
-    // Vertical stabilizer
-    const vStabGeo = new THREE.BoxGeometry(0.25, 1.7, 1.1);
-    const vStabMat = new THREE.MeshPhongMaterial({ color: 0xffffff });
-    const vStab = new THREE.Mesh(vStabGeo, vStabMat);
-    vStab.position.set(-3.6, 1.1, 0);
-    plane.add(vStab);
+    // Vertical tail fin
+    const tailFinGeo = new THREE.BoxGeometry(0.2, 2.2, 1.2);
+    const tailFinMat = new THREE.MeshPhongMaterial({ color: 0xcccccc });
+    const tailFin = new THREE.Mesh(tailFinGeo, tailFinMat);
+    tailFin.position.set(-4.6, 1.1, 0);
+    plane.add(tailFin);
 
-    // Propeller disc (spinning blur)
-    const propGeo = new THREE.CircleGeometry(1.1, 32);
-    const propMat = new THREE.MeshBasicMaterial({
-      color: 0x333333,
-      transparent: true,
-      opacity: 0.6
+    // Jet exhaust "glow"
+    const exhaustGeo = new THREE.CylinderGeometry(0.4, 0.4, 0.8, 16);
+    const exhaustMat = new THREE.MeshPhongMaterial({
+      color: 0x4444ff,
+      emissive: 0x2222ff,
+      emissiveIntensity: 0.8
     });
-    const prop = new THREE.Mesh(propGeo, propMat);
-    prop.rotation.y = Math.PI / 2;
-    prop.position.set(5.4, 0, 0);
-    plane.add(prop);
+    const exhaust = new THREE.Mesh(exhaustGeo, exhaustMat);
+    exhaust.rotation.z = Math.PI / 2;
+    exhaust.position.set(-5.5, 0, 0);
+    plane.add(exhaust);
 
     scene.add(plane);
 
     // ===== FLIGHT STATE =====
     const groundHeight = 0.0;
-    const gearHeight = 1.0; // plane's "wheels" height
+    const gearHeight = 1.0; // "wheel" height
 
     const state = {
       position: new THREE.Vector3(0, groundHeight + gearHeight, 0),
@@ -168,27 +178,25 @@
       throttle: 0.0,   // 0–1
       pitchInput: 0.0, // -1 to 1
       rollInput: 0.0,  // -1 to 1
-      yawInput: 0.0,   // -1 to 1
       onGround: true
     };
 
-    // Physics constants
-    const mass = 1000;          // kg
+    // Jet-like physics constants (but still somewhat tame)
+    const mass = 800;           // kg (light, agile jet)
     const g = 9.81;
-    const maxThrust = 8000;     // N (enough to take off)
-    const wingArea = 16;        // m^2
+    const maxThrust = 15000;    // N
+    const wingArea = 12;        // m^2
     const airDensity = 1.225;   // kg/m^3
-    const Cd = 0.03;            // drag coefficient
+    const Cd = 0.04;            // drag coefficient
     const liftSlope = 5.5;      // per rad
-    const ClMax = 1.4;
-    const angularDamping = 0.7;
+    const ClMax = 1.5;
+    const angularDamping = 1.2; // more damping = smoother
     const maxControlTorque = {
-      roll: 1.0,
-      pitch: 0.9,
-      yaw: 0.4
+      roll: 0.6,
+      pitch: 0.5
     };
-    const muRoll = 0.03;        // rolling friction coefficient (small)
-    const takeoffSpeed = 30;    // m/s (~58 kts) threshold
+    const muRoll = 0.03;        // rolling friction
+    const takeoffSpeed = 40;    // m/s
 
     let lastTime = performance.now();
     let cameraMode = 1; // 1 = cockpit, 3 = chase
@@ -200,11 +208,10 @@
       keys[e.code] = true;
       if (e.code.startsWith("Arrow")) e.preventDefault();
 
-      // Throttle 0–9
-      if (e.key >= "0" && e.key <= "9") {
+      // Throttle 1–9, (no 0, we keep a little idle by default)
+      if (e.key >= "1" && e.key <= "9") {
         const num = parseInt(e.key, 10);
-        if (num === 0) state.throttle = 0;
-        else state.throttle = num / 9;
+        state.throttle = num / 9;
       }
 
       // View toggle
@@ -212,7 +219,7 @@
         cameraMode = cameraMode === 1 ? 3 : 1;
       }
 
-      // Reset on runway
+      // Reset
       if (e.code === "KeyR") {
         resetPlane();
       }
@@ -249,15 +256,6 @@
       } else {
         state.rollInput = 0;
       }
-
-      // Yaw: A / D
-      if (keys["KeyA"]) {
-        state.yawInput = -1;
-      } else if (keys["KeyD"]) {
-        state.yawInput = 1;
-      } else {
-        state.yawInput = 0;
-      }
     }
 
     // ===== PHYSICS =====
@@ -275,37 +273,34 @@
       // Velocity and relative wind
       const speed = state.velocity.length();
       const velocity = state.velocity.clone();
-      const relWind = velocity.clone().negate(); // air at rest, plane moving
+      const relWind = velocity.clone().negate();
 
-      // If basically stopped, skip fancy aero
       let lift = new THREE.Vector3();
       let drag = new THREE.Vector3();
 
       if (speed > 1) {
         const relDir = relWind.clone().normalize();
-
-        // AoA: angle between forward and relative wind in forward-up plane
         const relForward = relDir.dot(forward);
         const relUp = relDir.dot(up);
-        const alpha = Math.atan2(relUp, relForward); // radians
+        const alpha = Math.atan2(relUp, relForward); // angle of attack
 
         let Cl = liftSlope * alpha;
         if (Cl > ClMax) Cl = ClMax;
         if (Cl < -ClMax) Cl = -ClMax;
 
-        const q = 0.5 * airDensity * speed * speed; // dynamic pressure
+        const q = 0.5 * airDensity * speed * speed;
 
         const liftMag = q * wingArea * Cl;
         lift = up.clone().multiplyScalar(liftMag);
 
         const dragMag = q * wingArea * Cd;
-        drag = relDir.clone().multiplyScalar(dragMag); // opposite to velocity
+        drag = relDir.clone().multiplyScalar(dragMag);
       }
 
       // Thrust along forward
       const thrust = forward.clone().multiplyScalar(maxThrust * state.throttle);
 
-      // Ground contact check
+      // Ground contact
       const heightAGL = state.position.y - groundHeight - gearHeight;
       if (heightAGL <= 0.001 && state.velocity.y <= 0) {
         state.onGround = true;
@@ -316,9 +311,7 @@
       let totalForce = new THREE.Vector3();
 
       if (state.onGround) {
-        // ----- On wheels -----
-        // Vertical: we constrain to ground, so don't integrate vertical pos;
-        // instead we use lift to reduce normal force.
+        // Vertical forces: gravity vs lift
         const liftVertical = lift.y;
         let normalMag = mass * g - liftVertical;
         if (normalMag < 0) normalMag = 0;
@@ -334,70 +327,71 @@
           friction = frictionDir.multiplyScalar(frictionMag);
         }
 
-        // Horizontal aerodynamic drag
+        // Horizontal drag, thrust
         const dragHoriz = drag.clone();
         dragHoriz.y = 0;
-
-        // Total horizontal forces
         const thrustHoriz = thrust.clone();
         thrustHoriz.y = 0;
+
         totalForce
           .add(thrustHoriz)
-          .add(dragHoriz.multiplyScalar(-1)) // drag opposes motion
+          .add(dragHoriz.multiplyScalar(-1))
           .add(friction);
 
-        // Takeoff condition: enough lift + speed
-        if (liftVertical > mass * g * 0.9 && speed > takeoffSpeed) {
+        // Takeoff if enough lift + speed
+        if (liftVertical > mass * g * 0.8 && speed > takeoffSpeed) {
           state.onGround = false;
-          // allow vertical motion now: give some upward velocity from lift
           state.velocity.y += (liftVertical - mass * g) / mass * dt * 2;
         }
       } else {
-        // ----- In the air -----
+        // In the air
         totalForce
           .add(gravityForce)
           .add(thrust)
           .add(lift)
-          .add(drag.multiplyScalar(-1)); // drag opposite to motion
+          .add(drag.multiplyScalar(-1));
       }
 
-      // Linear acceleration
+      // Linear accel
       const accel = totalForce.clone().divideScalar(mass);
 
-      // Integrate velocity & position
+      // Integrate
       state.velocity.add(accel.multiplyScalar(dt));
       state.position.add(state.velocity.clone().multiplyScalar(dt));
 
-      // Hard ground clamp (no going through ground)
+      // Hard clamp ground
       if (!state.onGround && state.position.y < groundHeight + gearHeight) {
         state.position.y = groundHeight + gearHeight;
         if (state.velocity.y < 0) state.velocity.y = 0;
         state.onGround = true;
       }
 
-      // ----- Rotational dynamics -----
-      // Local control torques: axes X=forward, Y=up, Z=right
-      let torque = new THREE.Vector3(
-        maxControlTorque.roll * state.rollInput,   // around X
-        maxControlTorque.yaw * state.yawInput,     // around Y
-        maxControlTorque.pitch * state.pitchInput  // around Z
-      );
-
-      // On ground, limit roll/yaw at low speed
-      if (state.onGround && speed < 20) {
-        torque.x *= 0.2;
-        torque.y *= 0.3;
+      // "Infinite" world: re-center when far from origin
+      const maxDist = 10000;
+      if (Math.abs(state.position.x) > maxDist || Math.abs(state.position.z) > maxDist) {
+        state.position.x = THREE.MathUtils.euclideanModulo(state.position.x + maxDist, 2 * maxDist) - maxDist;
+        state.position.z = THREE.MathUtils.euclideanModulo(state.position.z + maxDist, 2 * maxDist) - maxDist;
       }
 
-      // Angular acceleration (simplified: same inertia)
+      // Rotational dynamics (no yaw control)
+      let torque = new THREE.Vector3(
+        maxControlTorque.roll * state.rollInput,  // around X
+        0,                                       // no yaw
+        maxControlTorque.pitch * state.pitchInput // around Z
+      );
+
+      // On ground and slow: limit roll/pitch
+      if (state.onGround && speed < 25) {
+        torque.x *= 0.3;
+        torque.z *= 0.3;
+      }
+
       const angAccel = torque.clone();
 
-      // Damping
       const dampingFactor = Math.exp(-angularDamping * dt);
       state.angularVelocity.multiplyScalar(dampingFactor);
       state.angularVelocity.add(angAccel.multiplyScalar(dt));
 
-      // Integrate orientation using small-angle quaternion
       const angVel = state.angularVelocity;
       const angVelMag = angVel.length();
       if (angVelMag > 0.0001) {
@@ -407,20 +401,18 @@
         state.orientation.multiply(dq).normalize();
       }
 
-      // If on ground, keep wings mostly level and nose near horizon
+      // On ground, keep mostly level (wings & pitch)
       if (state.onGround) {
-        // Level roll slowly
         const currentUp = new THREE.Vector3(0, 1, 0).applyQuaternion(state.orientation);
         const targetUp = new THREE.Vector3(0, 1, 0);
         const rollAxis = currentUp.clone().cross(targetUp);
         const rollAngle = currentUp.angleTo(targetUp);
         if (rollAngle > 0.001) {
           const corrQuat = new THREE.Quaternion()
-            .setFromAxisAngle(rollAxis.normalize(), rollAngle * 0.3 * dt * 5);
+            .setFromAxisAngle(rollAxis.normalize(), rollAngle * 0.4 * dt * 5);
           state.orientation.premultiply(corrQuat).normalize();
         }
 
-        // Limit pitch to +/- 15 degrees on ground
         const nose = new THREE.Vector3(1, 0, 0).applyQuaternion(state.orientation);
         const pitch = Math.asin(THREE.MathUtils.clamp(nose.y, -1, 1));
         const maxPitch = THREE.MathUtils.degToRad(15);
@@ -436,34 +428,41 @@
       // Apply to model
       plane.position.copy(state.position);
       plane.quaternion.copy(state.orientation);
-
-      // Spin prop
-      prop.rotation.x += 80 * dt * (0.2 + state.throttle);
     }
 
-    // ===== CAMERA =====
+    // ===== CAMERA (NO ROLL TILT) =====
     function updateCamera() {
       const forward = new THREE.Vector3(1, 0, 0).applyQuaternion(plane.quaternion);
-      const up = new THREE.Vector3(0, 1, 0).applyQuaternion(plane.quaternion);
-      const right = new THREE.Vector3(0, 0, 1).applyQuaternion(plane.quaternion);
 
       if (cameraMode === 1) {
         // Cockpit view
-        const cockpitOffset = new THREE.Vector3(2.0, 0.6, 0); // inside cabin
+        const cockpitOffset = new THREE.Vector3(2.0, 0.4, 0);
         cockpitOffset.applyQuaternion(plane.quaternion);
         const camPos = plane.position.clone().add(cockpitOffset);
-        const target = camPos.clone().add(forward);
+
+        // Look direction: project forward onto horizontal plane so horizon stays level
+        let lookDir = forward.clone();
+        const horiz = new THREE.Vector3(lookDir.x, 0, lookDir.z);
+        if (horiz.lengthSq() > 0.001) {
+          horiz.normalize();
+          lookDir = horiz;
+        }
+        const target = camPos.clone().add(lookDir.multiplyScalar(10));
+
         camera.position.copy(camPos);
-        camera.up.copy(up);
+        camera.up.set(0, 1, 0); // world up => no roll tilt
         camera.lookAt(target);
       } else {
         // Chase view
         const chaseOffset = new THREE.Vector3(-15, 6, 0);
         chaseOffset.applyQuaternion(plane.quaternion);
         const camPos = plane.position.clone().add(chaseOffset);
+
+        const lookTarget = plane.position.clone().add(forward.clone().multiplyScalar(10));
+
         camera.position.copy(camPos);
-        camera.up.copy(up);
-        camera.lookAt(plane.position.clone().add(forward.multiplyScalar(10)));
+        camera.up.set(0, 1, 0); // world up
+        camera.lookAt(lookTarget);
       }
     }
 
