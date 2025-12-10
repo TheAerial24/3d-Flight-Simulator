@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Jet Stream: Titan Targets v2</title>
+    <title>Jet Stream: Easy Mode</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #87CEEB; font-family: 'Courier New', Courier, monospace; }
         
@@ -52,7 +52,6 @@
             border-left: 5px solid #ff3333;
         }
 
-        /* CHANGED TO RED SO YOU KNOW IT UPDATED */
         #crosshair {
             position: absolute;
             top: 50%; left: 50%;
@@ -64,7 +63,7 @@
         #crosshair::before, #crosshair::after {
             content: '';
             position: absolute;
-            background: rgba(255, 0, 0, 0.9); /* RED CROSSHAIR */
+            background: rgba(255, 0, 0, 0.9);
             box-shadow: 0 0 4px red;
         }
         #crosshair::before { top: 19px; left: 0; width: 40px; height: 2px; } 
@@ -112,15 +111,15 @@
 
 <div id="score-board">
     DESTROYED: <span id="scoreVal">0</span><br>
-    <span style="font-size:12px; color:white;">v2.0 FIXED</span>
+    <span style="font-size:12px; color:white;">EASY MODE</span>
 </div>
 
 <div id="instructions">
     <b>MISSION:</b> Destroy Red Bases<br><br>
     <b>CONTROLS:</b><br>
-    ⬆ / ⬇ : Pitch (Nose)<br>
-    ⬅ / ➡ : Roll (Bank Only)<br>
-    <b>C</b> : Toggle Camera<br>
+    ⬆ / ⬇ : Pitch (Smoother)<br>
+    ⬅ / ➡ : Roll<br>
+    <b>C</b> : Camera (1st / 3rd)<br>
     <b>W</b> : Throttle<br>
     <b>S</b> : Airbrake<br>
     <b>SPACE</b> : Fire Guns
@@ -143,29 +142,29 @@
 <script type="module">
     import * as THREE from 'https://unpkg.com/three@0.126.0/build/three.module.js';
 
-    // --- TUNING VARIABLES ---
-    const MAX_KTS = 600;          
-    const WORLD_SPEED_MULT = 6.0; 
-    const TAKEOFF_KTS = 60;       
+    // --- TUNING VARIABLES (EASIER) ---
+    const MAX_KTS = 450;          // Slower max speed
+    const WORLD_SPEED_MULT = 4.0; // Slower world movement
+    const TAKEOFF_KTS = 50;       
     
-    const PITCH_SPEED = 0.03;
-    const ROLL_SPEED = 0.05;
+    // REDUCED SENSITIVITY for smoother flying
+    const PITCH_SPEED = 0.015;  // Half the speed of before
+    const ROLL_SPEED = 0.04;
 
     // --- WEAPON & TARGET VARIABLES ---
-    const BULLET_SPEED = 40; // Faster bullets
-    const FIRE_RATE = 5; 
-    const NUM_TARGETS = 50;  
+    const BULLET_SPEED = 50; 
+    const FIRE_RATE = 4; 
+    const NUM_TARGETS = 60;  
     const MAP_SIZE = 15000;  
     let score = 0;
     
-    // 0 = Chase (Third Person), 1 = Cockpit
-    // DEFAULT IS NOW 0 (3rd Person) so you see the plane immediately
+    // 0 = Chase (3rd), 1 = Cockpit (1st)
     let cameraMode = 0; 
 
     // --- SCENE SETUP ---
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x87CEEB);
-    scene.fog = new THREE.Fog(0x87CEEB, 200, 6000); 
+    scene.fog = new THREE.Fog(0x87CEEB, 200, 8000); 
 
     const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 20000);
     const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -175,9 +174,9 @@
     document.body.appendChild(renderer.domElement);
 
     // --- LIGHTING ---
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
     scene.add(ambientLight);
-    const sun = new THREE.DirectionalLight(0xffffff, 1.0);
+    const sun = new THREE.DirectionalLight(0xffffff, 1.2);
     sun.position.set(100, 300, 100);
     sun.castShadow = true;
     sun.shadow.mapSize.width = 4096; 
@@ -205,9 +204,8 @@
 
     const jetMeshGroup = new THREE.Group();
     jetPivot.add(jetMeshGroup);
-    jetMeshGroup.position.z = -1.5; 
-
-    // Visuals (Jet)
+    
+    // VISUALS
     const bodyGeo = new THREE.ConeGeometry(0.6, 5, 16);
     bodyGeo.rotateX(Math.PI / 2);
     const bodyMat = new THREE.MeshPhongMaterial({ color: 0x999999, specular: 0x555555 });
@@ -219,49 +217,24 @@
     const cockpitMat = new THREE.MeshPhongMaterial({ color: 0x111111, shininess: 100, transparent: true, opacity: 0.3 });
     const cockpit = new THREE.Mesh(new THREE.ConeGeometry(0.45, 2.2, 8), cockpitMat);
     cockpit.rotation.x = Math.PI/2;
-    cockpit.position.set(0, 0.35, 0.2);
+    cockpit.position.set(0, 0.35, 1.7); // Moved forward slightly
     cockpit.scale.z = 0.6;
     jetMeshGroup.add(cockpit);
-
-    // --- VISUAL YOKE (THE STICK) ---
-    const yokeGroup = new THREE.Group();
-    yokeGroup.position.set(0, 0.2, 0.8); 
-    jetMeshGroup.add(yokeGroup);
-
-    // Yoke Shaft
-    const stickGeo = new THREE.CylinderGeometry(0.02, 0.02, 0.5, 8);
-    const yokeMat = new THREE.MeshPhongMaterial({ color: 0xAAAAAA }); 
-    const stick = new THREE.Mesh(stickGeo, yokeMat);
-    stick.position.y = -0.25;
-    yokeGroup.add(stick);
-
-    // Yoke Handle (U Shape)
-    const handleL = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.15, 0.04), yokeMat);
-    handleL.position.set(-0.1, 0, 0);
-    yokeGroup.add(handleL);
-    
-    const handleR = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.15, 0.04), yokeMat);
-    handleR.position.set(0.1, 0, 0);
-    yokeGroup.add(handleR);
-
-    const handleB = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.04, 0.04), yokeMat);
-    handleB.position.set(0, -0.06, 0);
-    yokeGroup.add(handleB);
 
     // Wings
     const darkMat = new THREE.MeshPhongMaterial({ color: 0x333333 });
     const wings = new THREE.Mesh(new THREE.BoxGeometry(6, 0.05, 2.5), darkMat);
-    wings.position.set(0, 0, 0.5);
+    wings.position.set(0, 0, 2.0);
     wings.castShadow = true;
     jetMeshGroup.add(wings);
 
     const tail = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.5, 1.5), darkMat);
-    tail.position.set(0, 0.7, 2);
+    tail.position.set(0, 0.7, 3.5);
     tail.castShadow = true;
     jetMeshGroup.add(tail);
 
     const stabilizer = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.05, 1.0), darkMat);
-    stabilizer.position.set(0, 0, 2.2);
+    stabilizer.position.set(0, 0, 3.7);
     stabilizer.castShadow = true;
     jetMeshGroup.add(stabilizer);
 
@@ -270,24 +243,46 @@
     engineGeo.rotateX(Math.PI/2);
     const engineMat = new THREE.MeshBasicMaterial({ color: 0xff4400 });
     const engine = new THREE.Mesh(engineGeo, engineMat);
-    engine.position.z = 2.5;
+    engine.position.z = 4.0;
     jetMeshGroup.add(engine);
+
+    // YOKE
+    const yokeGroup = new THREE.Group();
+    yokeGroup.position.set(0, 0.2, 2.2); // Inside cockpit area
+    jetMeshGroup.add(yokeGroup);
+
+    const stickGeo = new THREE.CylinderGeometry(0.02, 0.02, 0.5, 8);
+    const yokeMat = new THREE.MeshPhongMaterial({ color: 0xAAAAAA }); 
+    const stick = new THREE.Mesh(stickGeo, yokeMat);
+    stick.position.y = -0.25;
+    yokeGroup.add(stick);
+
+    const handleL = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.15, 0.04), yokeMat);
+    handleL.position.set(-0.1, 0, 0);
+    yokeGroup.add(handleL);
+    const handleR = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.15, 0.04), yokeMat);
+    handleR.position.set(0.1, 0, 0);
+    yokeGroup.add(handleR);
+    const handleB = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.04, 0.04), yokeMat);
+    handleB.position.set(0, -0.06, 0);
+    yokeGroup.add(handleB);
+
 
     // --- BULLETS & TARGETS ---
     const bullets = [];
     const targets = [];
 
-    const bulletGeo = new THREE.BoxGeometry(0.2, 0.2, 8); // Longer tracers
+    const bulletGeo = new THREE.BoxGeometry(0.4, 0.4, 6); // Bigger bullets
     const bulletMat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
 
-    const bunkerGeo = new THREE.BoxGeometry(50, 40, 50); 
+    const bunkerGeo = new THREE.BoxGeometry(60, 50, 60); // BIGGER TARGETS
     const bunkerMat = new THREE.MeshPhongMaterial({ color: 0xcc0000 });
 
     function spawnTarget(index) {
         const bunker = new THREE.Mesh(bunkerGeo, bunkerMat);
         bunker.position.set(
             (Math.random() - 0.5) * MAP_SIZE,
-            20, 
+            25, 
             (Math.random() - 0.5) * MAP_SIZE
         );
         bunker.castShadow = true;
@@ -302,19 +297,15 @@
 
     function fireBullet() {
         const b = new THREE.Mesh(bulletGeo, bulletMat);
-        b.position.copy(jetPivot.position);
+        // Start bullet slightly in front of plane nose
+        const startPos = new THREE.Vector3(0, 0, -2); 
+        startPos.applyMatrix4(jetPivot.matrixWorld);
+        b.position.copy(startPos);
         
-        // --- FIXED ACCURACY LOGIC ---
-        // 1. Get position 1000 units in front of CAMERA (where crosshair points)
-        const vector = new THREE.Vector3(0, 0, -1);
-        vector.applyQuaternion(camera.quaternion); 
-        const aimPoint = camera.position.clone().add(vector.multiplyScalar(2000));
-        
-        // 2. Rotate bullet to face that point
-        b.lookAt(aimPoint);
-        
-        // 3. Move bullet slightly forward to clear the plane body
-        b.translateZ(5); 
+        // Aim exactly where camera is looking
+        const aimVector = new THREE.Vector3(0, 0, -1);
+        aimVector.applyQuaternion(jetPivot.quaternion); // Locked to jet forward in easy mode
+        b.quaternion.copy(jetPivot.quaternion);
 
         scene.add(b);
         bullets.push({ mesh: b, life: 100 }); 
@@ -333,12 +324,10 @@
     ground.receiveShadow = true;
     scene.add(ground);
 
-    // --- TREES ---
     const treeGeo = new THREE.ConeGeometry(20, 60, 6);
     const treeMat = new THREE.MeshLambertMaterial({color: 0x0d4a0d});
     const treeCount = 2000;
     const treeMesh = new THREE.InstancedMesh(treeGeo, treeMat, treeCount);
-    
     const dummy = new THREE.Object3D();
     for (let i = 0; i < treeCount; i++) {
         dummy.position.set(
@@ -354,16 +343,13 @@
     treeMesh.receiveShadow = true;
     scene.add(treeMesh);
 
-    // --- INPUT HANDLING ---
+    // --- INPUT ---
     const keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false, w: false, s: false, " ": false, c: false };
-    
     window.addEventListener('keydown', (e) => {
         if(keys.hasOwnProperty(e.key) || keys.hasOwnProperty(e.key.toLowerCase())) keys[e.key] = true;
         if(e.key.toLowerCase() === 'w') keys.w = true;
         if(e.key.toLowerCase() === 's') keys.s = true;
-        if(e.key.toLowerCase() === 'c') {
-            cameraMode = (cameraMode === 0) ? 1 : 0; // Toggle
-        }
+        if(e.key.toLowerCase() === 'c') cameraMode = (cameraMode === 0) ? 1 : 0;
     });
     window.addEventListener('keyup', (e) => {
         if(keys.hasOwnProperty(e.key) || keys.hasOwnProperty(e.key.toLowerCase())) keys[e.key] = false;
@@ -371,13 +357,12 @@
         if(e.key.toLowerCase() === 's') keys.s = false;
     });
 
-    // --- LOGIC ---
+    // --- LOOP ---
     function resetGame() {
         document.getElementById('crashScreen').style.display = 'flex';
         playerParams.crashed = true;
         playerParams.speedKts = 0;
         playerParams.throttle = 0;
-
         setTimeout(() => {
             jetPivot.position.set(0, 1.0, 0);
             jetPivot.rotation.set(0, 0, 0);
@@ -388,29 +373,24 @@
 
     function animate() {
         requestAnimationFrame(animate);
+        if (playerParams.crashed) { renderer.render(scene, camera); return; }
 
-        if (playerParams.crashed) {
-            renderer.render(scene, camera);
-            return;
-        }
-
-        // 1. Throttle & Speed
+        // Speed Logic
         if (keys.w && playerParams.throttle < 100) playerParams.throttle += 1;
         if (keys.s && playerParams.throttle > 0) playerParams.throttle -= 1.5;
 
         let targetKts = (playerParams.throttle / 100) * MAX_KTS;
         if(jetPivot.rotation.x < -0.2 && !playerParams.isOnGround) targetKts += 1;
-
         playerParams.speedKts += (targetKts - playerParams.speedKts) * 0.02;
         let moveSpeed = (playerParams.speedKts / 300) * WORLD_SPEED_MULT;
 
-        // 2. Control Inputs (Visual Yoke Logic)
+        // Control Logic
         let yokeRot = 0;
         let yokePitch = 0;
 
         if (keys.ArrowUp) {
             if (playerParams.speedKts > TAKEOFF_KTS || !playerParams.isOnGround) {
-                jetPivot.rotateX(-PITCH_SPEED);
+                jetPivot.rotateX(-PITCH_SPEED); // Slower Pitch
             }
             yokePitch = -0.1; 
         }
@@ -418,7 +398,6 @@
             jetPivot.rotateX(PITCH_SPEED);
             yokePitch = 0.1; 
         }
-        
         if (keys.ArrowLeft) {
             jetPivot.rotateZ(ROLL_SPEED); 
             yokeRot = 0.5; 
@@ -428,110 +407,96 @@
             yokeRot = -0.5; 
         }
 
-        // Animate Yoke Visuals
+        // Yoke Animation
         yokeGroup.rotation.z += (yokeRot - yokeGroup.rotation.z) * 0.2;
-        yokeGroup.position.z += ((0.8 + yokePitch) - yokeGroup.position.z) * 0.2;
+        yokeGroup.position.z += ((2.2 + yokePitch) - yokeGroup.position.z) * 0.2;
 
-        // 3. Move Aircraft
+        // Physics
         jetPivot.translateZ(-moveSpeed);
 
-        // 4. Weapon Logic
+        // Shooting
         if (playerParams.cooldown > 0) playerParams.cooldown--;
-        
         if (keys[" "] && playerParams.cooldown <= 0 && !playerParams.isOnGround) {
             fireBullet();
             playerParams.cooldown = FIRE_RATE;
         }
 
-        // Update Bullets
+        // Bullets
         for (let i = bullets.length - 1; i >= 0; i--) {
             const b = bullets[i];
-            
-            // Move bullet forward relative to its own facing direction
             b.mesh.translateZ(BULLET_SPEED); 
             b.life--;
-
-            // Check collision
             let hit = false;
             for (let j = 0; j < targets.length; j++) {
-                if (b.mesh.position.distanceTo(targets[j].position) < 40) {
+                // INCREASED HIT RADIUS to 80 (Easier)
+                if (b.mesh.position.distanceTo(targets[j].position) < 80) {
                     hit = true;
                     score++;
                     document.getElementById('scoreVal').innerText = score;
-                    
-                    targets[j].position.set(
-                        (Math.random() - 0.5) * MAP_SIZE,
-                        20,
-                        (Math.random() - 0.5) * MAP_SIZE
-                    );
+                    targets[j].position.set((Math.random()-0.5)*MAP_SIZE, 25, (Math.random()-0.5)*MAP_SIZE);
                     break;
                 }
             }
-
             if (hit || b.life <= 0 || b.mesh.position.y < 0) {
                 scene.remove(b.mesh);
                 bullets.splice(i, 1);
             }
         }
 
-        // 5. Ground Physics
+        // Ground Check
         let groundLevel = 2.5; 
         if (jetPivot.position.y <= groundLevel) {
             if (jetPivot.rotation.x > 0.15 || Math.abs(jetPivot.rotation.z) > 0.6) {
-                if(playerParams.speedKts > 80) {
-                    resetGame();
-                    return;
-                }
+                if(playerParams.speedKts > 80) { resetGame(); return; }
             }
             playerParams.isOnGround = true;
             jetPivot.position.y = groundLevel; 
-            
             jetPivot.rotation.z *= 0.9;
             if(jetPivot.rotation.x > 0) jetPivot.rotation.x *= 0.9;
         } else {
             playerParams.isOnGround = false;
         }
 
-        // 6. Camera Logic (FIXED FOR CENTER ALIGNMENT)
-        let offsetMsg, lookMsg;
-        
-        if (cameraMode === 0) { // Third Person (Chase)
-            // Position: Strictly behind (Z: +30) and above (Y: +8)
-            offsetMsg = new THREE.Vector3(0, 8, 30); 
-            // Look At: Strictly forward (Z: -100) relative to jet
-            // This ensures the jet is in the center of the X-axis
-            lookMsg = new THREE.Vector3(0, 0, -100); 
-        } else { // Cockpit
-            offsetMsg = new THREE.Vector3(0, 0.6, 0.4); 
-            lookMsg = new THREE.Vector3(0, 0.6, -10); 
+        // --- NEW LOCKED CAMERA LOGIC ---
+        // 3rd Person:
+        const chasePos = new THREE.Vector3(0, 8, 30); // 30 units behind
+        chasePos.applyMatrix4(jetPivot.matrixWorld);
+
+        // 1st Person:
+        const cockpitPos = new THREE.Vector3(0, 0.6, 1.8); // Directly inside cockpit area
+        cockpitPos.applyMatrix4(jetPivot.matrixWorld);
+
+        if (cameraMode === 0) { // 3rd Person
+            // HARD SET Position (No Smoothing/Lerp)
+            camera.position.copy(chasePos);
+            // HARD SET Rotation (Locked to plane quaternion)
+            camera.quaternion.copy(jetPivot.quaternion);
+        } else { // 1st Person
+            camera.position.copy(cockpitPos);
+            camera.quaternion.copy(jetPivot.quaternion);
         }
-        
-        offsetMsg.applyMatrix4(jetPivot.matrixWorld);
-        lookMsg.applyMatrix4(jetPivot.matrixWorld);
 
-        // Instant Lock (Lerp 1.0) so no swaying
-        camera.position.lerp(offsetMsg, 1.0);
-        camera.lookAt(lookMsg);
-
-        // Shadows
+        // Shadows & HUD
         sun.position.x = jetPivot.position.x + 100;
         sun.position.z = jetPivot.position.z + 50;
         sun.target = jetPivot;
-
-        // 7. HUD
+        
         document.getElementById('spdVal').innerText = Math.round(playerParams.speedKts);
         document.getElementById('machVal').innerText = "M " + (playerParams.speedKts / 661).toFixed(2);
         document.getElementById('throttleBar').style.width = Math.min((playerParams.speedKts / MAX_KTS * 100), 100) + '%';
         document.getElementById('altVal').innerText = Math.round((jetPivot.position.y - 2.5) * 10);
         
         const statusEl = document.getElementById('statusText');
-        if (playerParams.isOnGround) {
-            statusEl.innerText = "GROUND";
-            statusEl.style.color = "orange";
-        } else {
-            statusEl.innerText = "AIRBORNE";
-            statusEl.style.color = "#33ff33";
-        }
+        statusEl.innerText = playerParams.isOnGround ? "GROUND" : "AIRBORNE";
+        statusEl.style.color = playerParams.isOnGround ? "orange" : "#33ff33";
+        
+        // Hide plane mesh if inside cockpit to prevent clipping
+        jetMeshGroup.visible = (cameraMode === 0);
+
+        // If in Cockpit mode, we still want to see the YOKE and COCKPIT interior
+        // But the current mesh setup is simple.
+        // Quick fix: If in cockpit, show mesh but move camera slightly forward to avoid clipping back of head.
+        if (cameraMode === 1) jetMeshGroup.visible = true;
 
         let flicker = 0.5 + Math.random() * 0.5;
         engine.material.color.setHSL(0.05 + (playerParams.throttle/300), 1, 0.5 * flicker);
