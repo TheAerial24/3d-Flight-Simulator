@@ -2,11 +2,10 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Jet Stream: Ground Attack</title>
+    <title>Jet Stream: Titan Targets</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #87CEEB; font-family: 'Courier New', Courier, monospace; }
         
-        /* HUD CONTAINER */
         #hud {
             position: absolute;
             bottom: 20px;
@@ -52,7 +51,6 @@
             border-left: 5px solid #ff3333;
         }
 
-        /* CROSSHAIR */
         #crosshair {
             position: absolute;
             top: 50%; left: 50%;
@@ -65,10 +63,9 @@
             position: absolute;
             background: rgba(0, 255, 0, 0.8);
         }
-        #crosshair::before { top: 19px; left: 0; width: 40px; height: 2px; } /* Horizontal */
-        #crosshair::after { left: 19px; top: 0; height: 40px; width: 2px; } /* Vertical */
+        #crosshair::before { top: 19px; left: 0; width: 40px; height: 2px; } 
+        #crosshair::after { left: 19px; top: 0; height: 40px; width: 2px; } 
 
-        /* BARS & UI */
         .bar-container {
             width: 100%;
             height: 12px;
@@ -82,14 +79,6 @@
             height: 100%;
             background: #33ff33;
             transition: width 0.1s linear;
-        }
-        #takeoffMarker {
-            position: absolute;
-            left: 20%; 
-            top: 0; bottom: 0;
-            width: 2px;
-            background: red;
-            z-index: 10;
         }
         
         #crashScreen {
@@ -120,10 +109,11 @@
 <div id="score-board">DESTROYED: <span id="scoreVal">0</span></div>
 
 <div id="instructions">
-    <b>MISSION:</b> Destroy Red Bunkers<br><br>
+    <b>MISSION:</b> Destroy Red Bases<br><br>
     <b>CONTROLS:</b><br>
-    ⬆ / ⬇ : Pitch<br>
-    ⬅ / ➡ : Roll<br>
+    ⬆ / ⬇ : Pitch (Nose)<br>
+    ⬅ / ➡ : Roll (Bank Only)<br>
+    <i>(Bank 90° & Pull Up to turn)</i><br>
     <b>W</b> : Throttle<br>
     <b>S</b> : Airbrake<br>
     <b>SPACE</b> : Fire Guns
@@ -137,9 +127,7 @@
     
     <div class="bar-container">
         <div id="throttleBar"></div>
-        <div id="takeoffMarker" title="Takeoff Speed (60kts)"></div>
     </div>
-    <div style="font-size: 10px; color: #aaa; text-align: center; margin-bottom:10px;">▲ TAKEOFF (60)</div>
     
     <div>ALTITUDE: <span id="altVal">0</span> FT</div>
     <div>STATUS: <span id="statusText">GROUND</span></div>
@@ -149,26 +137,26 @@
     import * as THREE from 'https://unpkg.com/three@0.126.0/build/three.module.js';
 
     // --- TUNING VARIABLES ---
-    const MAX_KTS = 500;          
-    const WORLD_SPEED_MULT = 3.5; 
+    const MAX_KTS = 600;          
+    const WORLD_SPEED_MULT = 6.0; 
     const TAKEOFF_KTS = 60;       
     
-    const PITCH_SPEED = 0.025;
-    const ROLL_SPEED = 0.045;
-    const BANK_AUTO_PITCH = 0.0; // Disabled as requested
+    const PITCH_SPEED = 0.03;
+    const ROLL_SPEED = 0.05;
 
     // --- WEAPON & TARGET VARIABLES ---
-    const BULLET_SPEED = 10;
-    const FIRE_RATE = 8; // Frames between shots
-    const NUM_TARGETS = 20;
+    const BULLET_SPEED = 25; 
+    const FIRE_RATE = 6; 
+    const NUM_TARGETS = 50;  
+    const MAP_SIZE = 15000;  
     let score = 0;
 
     // --- SCENE SETUP ---
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x87CEEB);
-    scene.fog = new THREE.Fog(0x87CEEB, 200, 4000);
+    scene.fog = new THREE.Fog(0x87CEEB, 200, 6000); 
 
-    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 10000);
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 20000);
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.shadowMap.enabled = true;
@@ -176,19 +164,19 @@
     document.body.appendChild(renderer.domElement);
 
     // --- LIGHTING ---
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
     scene.add(ambientLight);
     const sun = new THREE.DirectionalLight(0xffffff, 1.0);
     sun.position.set(100, 300, 100);
     sun.castShadow = true;
-    sun.shadow.mapSize.width = 2048; 
-    sun.shadow.mapSize.height = 2048;
+    sun.shadow.mapSize.width = 4096; 
+    sun.shadow.mapSize.height = 4096;
     sun.shadow.camera.near = 0.5;
-    sun.shadow.camera.far = 1000;
-    sun.shadow.camera.left = -500;
-    sun.shadow.camera.right = 500;
-    sun.shadow.camera.top = 500;
-    sun.shadow.camera.bottom = -500;
+    sun.shadow.camera.far = 2000;
+    sun.shadow.camera.left = -1000;
+    sun.shadow.camera.right = 1000;
+    sun.shadow.camera.top = 1000;
+    sun.shadow.camera.bottom = -1000;
     scene.add(sun);
 
     // --- AIRCRAFT SETUP ---
@@ -253,18 +241,19 @@
     const bullets = [];
     const targets = [];
 
-    const bulletGeo = new THREE.BoxGeometry(0.1, 0.1, 2);
+    const bulletGeo = new THREE.BoxGeometry(0.2, 0.2, 4);
     const bulletMat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
 
-    const bunkerGeo = new THREE.BoxGeometry(10, 8, 10);
+    // *** HUGE BASES ***
+    const bunkerGeo = new THREE.BoxGeometry(50, 40, 50); // Increased from 15 to 50
     const bunkerMat = new THREE.MeshPhongMaterial({ color: 0xcc0000 });
 
     function spawnTarget(index) {
         const bunker = new THREE.Mesh(bunkerGeo, bunkerMat);
         bunker.position.set(
-            (Math.random() - 0.5) * 4000,
-            4, // Half height so it sits on ground
-            (Math.random() - 0.5) * 4000
+            (Math.random() - 0.5) * MAP_SIZE,
+            20, // Raised Y so it sits on ground (half of height 40)
+            (Math.random() - 0.5) * MAP_SIZE
         );
         bunker.castShadow = true;
         bunker.receiveShadow = true;
@@ -278,37 +267,46 @@
 
     function fireBullet() {
         const b = new THREE.Mesh(bulletGeo, bulletMat);
-        // Start at jet position
         b.position.copy(jetPivot.position);
         b.rotation.copy(jetPivot.rotation);
-        // Move slightly forward so we don't hit ourselves
         b.translateZ(-5); 
         scene.add(b);
-        bullets.push({ mesh: b, life: 100 }); // Life is frames before despawn
+        bullets.push({ mesh: b, life: 80 }); 
     }
 
-    // --- TRAILS SYSTEM ---
-    const TRAIL_LENGTH = 60;
-    const trailGeom = new THREE.BufferGeometry();
-    const trailPos = new Float32Array(TRAIL_LENGTH * 3);
-    trailGeom.setAttribute('position', new THREE.BufferAttribute(trailPos, 3));
-    const trailMat = new THREE.PointsMaterial({ color: 0xaaaaff, size: 0.8, transparent: true, opacity: 0.5 });
-    const trailParticles = new THREE.Points(trailGeom, trailMat);
-    scene.add(trailParticles);
-    for(let i=0; i<TRAIL_LENGTH*3; i++) trailPos[i] = 0;
-
     // --- ENVIRONMENT ---
-    const gridHelper = new THREE.GridHelper(40000, 400, 0x555555, 0x555555);
+    const gridHelper = new THREE.GridHelper(MAP_SIZE * 2, 400, 0x555555, 0x555555);
     scene.add(gridHelper);
     
     const ground = new THREE.Mesh(
-        new THREE.PlaneGeometry(40000, 40000),
+        new THREE.PlaneGeometry(MAP_SIZE * 2, MAP_SIZE * 2),
         new THREE.MeshPhongMaterial({ color: 0x2e8b57, depthWrite: false })
     );
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = -0.2;
     ground.receiveShadow = true;
     scene.add(ground);
+
+    // --- TREES ---
+    const treeGeo = new THREE.ConeGeometry(20, 60, 6);
+    const treeMat = new THREE.MeshLambertMaterial({color: 0x0d4a0d});
+    const treeCount = 2000;
+    const treeMesh = new THREE.InstancedMesh(treeGeo, treeMat, treeCount);
+    
+    const dummy = new THREE.Object3D();
+    for (let i = 0; i < treeCount; i++) {
+        dummy.position.set(
+            (Math.random()-0.5) * MAP_SIZE, 
+            30, 
+            (Math.random()-0.5) * MAP_SIZE
+        );
+        dummy.scale.setScalar(1 + Math.random());
+        dummy.updateMatrix();
+        treeMesh.setMatrixAt(i, dummy.matrix);
+    }
+    treeMesh.castShadow = true;
+    treeMesh.receiveShadow = true;
+    scene.add(treeMesh);
 
     // --- INPUT HANDLING ---
     const keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false, w: false, s: false, " ": false };
@@ -335,7 +333,6 @@
             jetPivot.position.set(0, 1.0, 0);
             jetPivot.rotation.set(0, 0, 0);
             playerParams.crashed = false;
-            // Optional: reset score? Let's keep score for fun.
             document.getElementById('crashScreen').style.display = 'none';
         }, 2000);
     }
@@ -353,12 +350,12 @@
         if (keys.s && playerParams.throttle > 0) playerParams.throttle -= 1.5;
 
         let targetKts = (playerParams.throttle / 100) * MAX_KTS;
-        if(jetPivot.rotation.x < -0.2 && !playerParams.isOnGround) targetKts += 100; // Dive boost
+        if(jetPivot.rotation.x < -0.2 && !playerParams.isOnGround) targetKts += 1;
 
         playerParams.speedKts += (targetKts - playerParams.speedKts) * 0.02;
         let moveSpeed = (playerParams.speedKts / 300) * WORLD_SPEED_MULT;
 
-        // 2. Control Inputs
+        // 2. Control Inputs (PURE PHYSICS - NO AUTO TURN)
         if (keys.ArrowUp) {
             if (playerParams.speedKts > TAKEOFF_KTS || !playerParams.isOnGround) {
                 jetPivot.rotateX(-PITCH_SPEED);
@@ -367,14 +364,10 @@
         if (keys.ArrowDown) jetPivot.rotateX(PITCH_SPEED);
         
         if (keys.ArrowLeft) {
-            jetPivot.rotateZ(ROLL_SPEED);
-            jetPivot.rotateY(ROLL_SPEED * 0.3); 
-            if(!playerParams.isOnGround) jetPivot.rotateX(-BANK_AUTO_PITCH); 
+            jetPivot.rotateZ(ROLL_SPEED); // ONLY ROLL
         }
         if (keys.ArrowRight) {
-            jetPivot.rotateZ(-ROLL_SPEED);
-            jetPivot.rotateY(-ROLL_SPEED * 0.3); 
-            if(!playerParams.isOnGround) jetPivot.rotateX(-BANK_AUTO_PITCH);
+            jetPivot.rotateZ(-ROLL_SPEED); // ONLY ROLL
         }
 
         // 3. Move Aircraft
@@ -391,29 +384,28 @@
         // Update Bullets
         for (let i = bullets.length - 1; i >= 0; i--) {
             const b = bullets[i];
-            b.mesh.translateZ(-BULLET_SPEED); // Move bullet forward locally
+            b.mesh.translateZ(-BULLET_SPEED); 
             b.life--;
 
             // Check collision with targets
             let hit = false;
             for (let j = 0; j < targets.length; j++) {
-                if (b.mesh.position.distanceTo(targets[j].position) < 15) {
-                    // Hit!
+                // Increased Hit Radius because bases are bigger (size 50, so radius ~35)
+                if (b.mesh.position.distanceTo(targets[j].position) < 40) {
                     hit = true;
                     score++;
                     document.getElementById('scoreVal').innerText = score;
                     
-                    // Respawn target elsewhere
+                    // Respawn target
                     targets[j].position.set(
-                        (Math.random() - 0.5) * 4000,
-                        4,
-                        (Math.random() - 0.5) * 4000
+                        (Math.random() - 0.5) * MAP_SIZE,
+                        20,
+                        (Math.random() - 0.5) * MAP_SIZE
                     );
                     break;
                 }
             }
 
-            // Remove bullet if hit or expired or hit ground
             if (hit || b.life <= 0 || b.mesh.position.y < 0) {
                 scene.remove(b.mesh);
                 bullets.splice(i, 1);
@@ -423,7 +415,6 @@
         // 5. Ground Physics
         let groundLevel = 2.5; 
         if (jetPivot.position.y <= groundLevel) {
-            // CRASH LOGIC
             if (jetPivot.rotation.x > 0.15 || Math.abs(jetPivot.rotation.z) > 0.6) {
                 if(playerParams.speedKts > 80) {
                     resetGame();
@@ -433,30 +424,13 @@
             playerParams.isOnGround = true;
             jetPivot.position.y = groundLevel; 
             
-            // Auto-Level
             jetPivot.rotation.z *= 0.9;
             if(jetPivot.rotation.x > 0) jetPivot.rotation.x *= 0.9;
         } else {
             playerParams.isOnGround = false;
         }
 
-        // 6. Trails
-        const engineWorldPos = new THREE.Vector3();
-        engine.getWorldPosition(engineWorldPos);
-        const positions = trailParticles.geometry.attributes.position.array;
-        if (playerParams.speedKts > 20) {
-            for (let i = (TRAIL_LENGTH - 1) * 3; i > 0; i -= 3) {
-                positions[i] = positions[i - 3];
-                positions[i + 1] = positions[i - 2];
-                positions[i + 2] = positions[i - 1];
-            }
-            positions[0] = engineWorldPos.x;
-            positions[1] = engineWorldPos.y;
-            positions[2] = engineWorldPos.z;
-        }
-        trailParticles.geometry.attributes.position.needsUpdate = true;
-
-        // 7. Steady Camera (No speed warping)
+        // 6. Camera
         const idealOffset = new THREE.Vector3(0, 8, 25);
         idealOffset.applyMatrix4(jetPivot.matrixWorld);
         camera.position.lerp(idealOffset, 0.1);
@@ -469,7 +443,7 @@
         sun.position.z = jetPivot.position.z + 50;
         sun.target = jetPivot;
 
-        // 8. HUD
+        // 7. HUD
         document.getElementById('spdVal').innerText = Math.round(playerParams.speedKts);
         document.getElementById('machVal').innerText = "M " + (playerParams.speedKts / 661).toFixed(2);
         document.getElementById('throttleBar').style.width = Math.min((playerParams.speedKts / MAX_KTS * 100), 100) + '%';
