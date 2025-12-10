@@ -201,6 +201,7 @@
 <div id="controls-help">
     <b>Controls:</b><br>
     <span class="key">W</span> / <span class="key">S</span> - Throttle (Hold W)<br>
+    <span class="key">A</span> - Afterburner (Hold)<br>
     <span class="key">G</span> - Toggle Landing Gear<br>
     Arrows - Steering (Ground)<br>
     Arrows - Pitch/Roll (Air)<br>
@@ -212,6 +213,7 @@
     <h1>Jet Fighter Simulator</h1>
     <p>Click to Start Engine</p>
     <p>Use <span class="key">W</span> to Throttle Up</p>
+    <p>Hold <span class="key">A</span> for Afterburner</p>
     <p>Use <span class="key">G</span> for Landing Gear</p>
     <p>Use <span class="key">Arrows</span> to Steer/Fly</p>
     <button class="btn-start">START FLIGHT</button>
@@ -311,7 +313,8 @@ function init() {
         crashed: false,
         stalled: false,
         onGround: true,
-        gearDown: true
+        gearDown: true,
+        afterburner: false
     };
 
     const container = document.getElementById('canvas-container');
@@ -380,6 +383,9 @@ function updateInputs() {
     
     input.throttle = THREE.MathUtils.clamp(input.throttle, 0, 1);
     
+    // Check Afterburner
+    sim.afterburner = keys['KeyA'];
+
     // Pitch / Roll logic
     let keyPitchCmd = 0;
     if (keys['ArrowDown']) keyPitchCmd = 1;
@@ -445,10 +451,25 @@ function updatePhysics(dt) {
     const dragDir = sim.vel.clone().normalize().negate();
     const dragForce = (speed > 0.1) ? dragDir.multiplyScalar(dragMag) : new THREE.Vector3();
 
-    // Thrust
+    // Thrust - Afterburner Logic
+    let currentThrottle = input.throttle;
+    if (sim.afterburner) currentThrottle = 1.1;
+
     const thrustFactor = Math.max(0.4, 1 - (speed / 350)); // Jets keep thrust higher at speed
-    const thrustMag = input.throttle * PHYSICS.maxThrust * thrustFactor;
+    const thrustMag = currentThrottle * PHYSICS.maxThrust * thrustFactor;
     const thrustForce = forward.clone().multiplyScalar(thrustMag);
+
+    // Visuals: Afterburner Flames
+    if (plane && plane.userData.afterburners) {
+        plane.userData.afterburners.forEach(ab => {
+            ab.visible = sim.afterburner;
+            if (sim.afterburner) {
+                // Flicker effect
+                const s = 1.0 + Math.random() * 0.5;
+                ab.scale.set(s, s, s * (1.5 + Math.random() * 0.5));
+            }
+        });
+    }
 
     // Gravity
     const gravityForce = new THREE.Vector3(0, -PHYSICS.gravity * PHYSICS.mass, 0);
@@ -597,7 +618,20 @@ function updateHUD() {
     document.getElementById('speed-display').innerText = speed;
     document.getElementById('alt-display').innerText = alt;
     document.getElementById('hdg-display').innerText = hdg;
-    document.getElementById('thr-display').innerText = Math.round(input.throttle * 100);
+    
+    // Throttle Display Logic
+    let throttleVal = Math.round(input.throttle * 100);
+    const thrEl = document.getElementById('thr-display');
+    if (sim.afterburner) {
+        throttleVal = 110;
+        thrEl.style.color = 'red';
+        thrEl.style.textShadow = '0 0 5px red';
+    } else {
+        thrEl.style.color = '#0f0';
+        thrEl.style.textShadow = 'none';
+    }
+    thrEl.innerText = throttleVal;
+
     document.getElementById('vsi-display').innerText = vsi;
     document.getElementById('gear-display').innerText = sim.gearDown ? "DN" : "UP";
     document.getElementById('gear-display').style.color = sim.gearDown ? "#0f0" : "#fa0";
@@ -606,7 +640,8 @@ function updateHUD() {
     if (sim.stalled) stallElem.style.display = 'block';
     else stallElem.style.display = 'none';
 
-    document.getElementById('throttle-fill').style.height = (input.throttle*100)+'%';
+    document.getElementById('throttle-fill').style.height = (sim.afterburner ? 100 : input.throttle*100)+'%';
+    document.getElementById('throttle-fill').style.backgroundColor = sim.afterburner ? 'red' : '#ffcc00';
 }
 
 function updateCamera() {
@@ -631,6 +666,7 @@ function resetPlane() {
     sim.crashed = false;
     sim.stalled = false;
     sim.gearDown = true;
+    sim.afterburner = false;
     if (plane && plane.userData.gearGroup) plane.userData.gearGroup.visible = true;
     
     input.throttle = 0;
@@ -706,6 +742,25 @@ function createJetMesh() {
     exR.rotation.x = -Math.PI/2;
     exR.position.set(-1.2, 0.5, 5.1);
     root.add(exR);
+
+    // Afterburner Effects
+    const abGeo = new THREE.ConeGeometry(0.35, 2.5, 16, 1, true);
+    // Fixed: Translate +1.25 so the Base is at 0 and Tip is at +2.5
+    abGeo.translate(0, 1.25, 0); 
+    abGeo.rotateX(Math.PI / 2); // Rotated +90 deg so +Y (Tip) points to +Z (Back)
+    const abMat = new THREE.MeshBasicMaterial({ color: 0xffaa00, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending });
+
+    const abL = new THREE.Mesh(abGeo, abMat);
+    abL.position.set(1.2, 0.5, 5.15); // Behind engine L
+    abL.visible = false;
+    root.add(abL);
+
+    const abR = new THREE.Mesh(abGeo, abMat);
+    abR.position.set(-1.2, 0.5, 5.15); // Behind engine R
+    abR.visible = false;
+    root.add(abR);
+
+    root.userData.afterburners = [abL, abR];
 
     // Vertical Stabilizer (Tail)
     const tailGeo = new THREE.BoxGeometry(0.1, 3, 3);
