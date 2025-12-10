@@ -2,10 +2,11 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Jet Stream: Steady Cam</title>
+    <title>Jet Stream: Ground Attack</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #87CEEB; font-family: 'Courier New', Courier, monospace; }
         
+        /* HUD CONTAINER */
         #hud {
             position: absolute;
             bottom: 20px;
@@ -27,10 +28,10 @@
             position: absolute;
             top: 20px;
             right: 20px;
-            color: #ffff00;
+            color: #ff3333;
             background: rgba(0, 0, 0, 0.6);
             padding: 10px 20px;
-            border: 2px solid #ffff00;
+            border: 2px solid #ff3333;
             border-radius: 8px;
             font-size: 24px;
             font-weight: bold;
@@ -48,9 +49,26 @@
             border-radius: 5px;
             pointer-events: none;
             font-size: 14px;
-            border-left: 5px solid orange;
+            border-left: 5px solid #ff3333;
         }
 
+        /* CROSSHAIR */
+        #crosshair {
+            position: absolute;
+            top: 50%; left: 50%;
+            width: 40px; height: 40px;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+        }
+        #crosshair::before, #crosshair::after {
+            content: '';
+            position: absolute;
+            background: rgba(0, 255, 0, 0.8);
+        }
+        #crosshair::before { top: 19px; left: 0; width: 40px; height: 2px; } /* Horizontal */
+        #crosshair::after { left: 19px; top: 0; height: 40px; width: 2px; } /* Vertical */
+
+        /* BARS & UI */
         .bar-container {
             width: 100%;
             height: 12px;
@@ -92,20 +110,23 @@
 </head>
 <body>
 
+<div id="crosshair"></div>
+
 <div id="crashScreen">
     <div>CRASHED!</div>
     <div style="font-size:20px; margin-top:10px;">Resetting Systems...</div>
 </div>
 
-<div id="score-board">SCORE: <span id="scoreVal">0</span></div>
+<div id="score-board">DESTROYED: <span id="scoreVal">0</span></div>
 
 <div id="instructions">
-    <b>MISSION:</b> Fly through Yellow Rings!<br><br>
+    <b>MISSION:</b> Destroy Red Bunkers<br><br>
     <b>CONTROLS:</b><br>
     ⬆ / ⬇ : Pitch<br>
     ⬅ / ➡ : Roll<br>
-    <b>W</b> : Throttle (Afterburner)<br>
+    <b>W</b> : Throttle<br>
     <b>S</b> : Airbrake<br>
+    <b>SPACE</b> : Fire Guns
 </div>
 
 <div id="hud">
@@ -134,14 +155,13 @@
     
     const PITCH_SPEED = 0.025;
     const ROLL_SPEED = 0.045;
-    
-    // Set to 0.0 so nose doesn't drop on turns
-    const BANK_AUTO_PITCH = 0.0; 
+    const BANK_AUTO_PITCH = 0.0; // Disabled as requested
 
-    // --- GAME STATE ---
+    // --- WEAPON & TARGET VARIABLES ---
+    const BULLET_SPEED = 10;
+    const FIRE_RATE = 8; // Frames between shots
+    const NUM_TARGETS = 20;
     let score = 0;
-    const rings = [];
-    const NUM_RINGS = 15;
 
     // --- SCENE SETUP ---
     const scene = new THREE.Scene();
@@ -177,7 +197,8 @@
         speedKts: 0,
         altitude: 0,
         isOnGround: true,
-        crashed: false
+        crashed: false,
+        cooldown: 0
     };
 
     const jetPivot = new THREE.Group(); 
@@ -187,23 +208,16 @@
     jetPivot.add(jetMeshGroup);
     jetMeshGroup.position.z = -1.5; 
 
-    // Jet Body
+    // Visuals (Jet)
     const bodyGeo = new THREE.ConeGeometry(0.6, 5, 16);
     bodyGeo.rotateX(Math.PI / 2);
-    const bodyMat = new THREE.MeshPhongMaterial({ color: 0xeeeeee, specular: 0x999999, shininess: 50 });
+    const bodyMat = new THREE.MeshPhongMaterial({ color: 0x999999, specular: 0x555555 });
     const fuselage = new THREE.Mesh(bodyGeo, bodyMat);
     fuselage.castShadow = true;
     jetMeshGroup.add(fuselage);
 
     // Cockpit
-    const cockpitGeo = new THREE.BufferGeometry();
-    const cockpitPts = [
-        new THREE.Vector3(-0.3, 0.2, 0.5), new THREE.Vector3(0.3, 0.2, 0.5),
-        new THREE.Vector3(0, 0.6, -1), new THREE.Vector3(0, 0.2, 2)
-    ];
-    cockpitGeo.setFromPoints(cockpitPts);
-    cockpitGeo.computeVertexNormals();
-    const cockpitMat = new THREE.MeshPhongMaterial({ color: 0x111111, shininess: 100, opacity: 0.9, transparent:true });
+    const cockpitMat = new THREE.MeshPhongMaterial({ color: 0x111111, shininess: 100 });
     const cockpit = new THREE.Mesh(new THREE.ConeGeometry(0.45, 2.2, 8), cockpitMat);
     cockpit.rotation.x = Math.PI/2;
     cockpit.position.set(0, 0.35, 0.2);
@@ -211,22 +225,18 @@
     jetMeshGroup.add(cockpit);
 
     // Wings
-    const wingGeo = new THREE.BoxGeometry(6, 0.05, 2.5);
-    const darkMat = new THREE.MeshPhongMaterial({ color: 0x444444 });
-    const wings = new THREE.Mesh(wingGeo, darkMat);
+    const darkMat = new THREE.MeshPhongMaterial({ color: 0x333333 });
+    const wings = new THREE.Mesh(new THREE.BoxGeometry(6, 0.05, 2.5), darkMat);
     wings.position.set(0, 0, 0.5);
     wings.castShadow = true;
     jetMeshGroup.add(wings);
 
-    // Tail
-    const tailGeo = new THREE.BoxGeometry(0.05, 1.5, 1.5);
-    const tail = new THREE.Mesh(tailGeo, darkMat);
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.5, 1.5), darkMat);
     tail.position.set(0, 0.7, 2);
     tail.castShadow = true;
     jetMeshGroup.add(tail);
 
-    const stabilizerGeo = new THREE.BoxGeometry(2.5, 0.05, 1.0);
-    const stabilizer = new THREE.Mesh(stabilizerGeo, darkMat);
+    const stabilizer = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.05, 1.0), darkMat);
     stabilizer.position.set(0, 0, 2.2);
     stabilizer.castShadow = true;
     jetMeshGroup.add(stabilizer);
@@ -238,6 +248,44 @@
     const engine = new THREE.Mesh(engineGeo, engineMat);
     engine.position.z = 2.5;
     jetMeshGroup.add(engine);
+
+    // --- BULLETS & TARGETS ---
+    const bullets = [];
+    const targets = [];
+
+    const bulletGeo = new THREE.BoxGeometry(0.1, 0.1, 2);
+    const bulletMat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+
+    const bunkerGeo = new THREE.BoxGeometry(10, 8, 10);
+    const bunkerMat = new THREE.MeshPhongMaterial({ color: 0xcc0000 });
+
+    function spawnTarget(index) {
+        const bunker = new THREE.Mesh(bunkerGeo, bunkerMat);
+        bunker.position.set(
+            (Math.random() - 0.5) * 4000,
+            4, // Half height so it sits on ground
+            (Math.random() - 0.5) * 4000
+        );
+        bunker.castShadow = true;
+        bunker.receiveShadow = true;
+        scene.add(bunker);
+        targets[index] = bunker;
+    }
+
+    for(let i=0; i<NUM_TARGETS; i++) {
+        spawnTarget(i);
+    }
+
+    function fireBullet() {
+        const b = new THREE.Mesh(bulletGeo, bulletMat);
+        // Start at jet position
+        b.position.copy(jetPivot.position);
+        b.rotation.copy(jetPivot.rotation);
+        // Move slightly forward so we don't hit ourselves
+        b.translateZ(-5); 
+        scene.add(b);
+        bullets.push({ mesh: b, life: 100 }); // Life is frames before despawn
+    }
 
     // --- TRAILS SYSTEM ---
     const TRAIL_LENGTH = 60;
@@ -253,50 +301,17 @@
     const gridHelper = new THREE.GridHelper(40000, 400, 0x555555, 0x555555);
     scene.add(gridHelper);
     
-    const groundGeo = new THREE.PlaneGeometry(40000, 40000);
-    const groundMat = new THREE.MeshPhongMaterial({ color: 0x2e8b57, depthWrite: false });
-    const ground = new THREE.Mesh(groundGeo, groundMat);
+    const ground = new THREE.Mesh(
+        new THREE.PlaneGeometry(40000, 40000),
+        new THREE.MeshPhongMaterial({ color: 0x2e8b57, depthWrite: false })
+    );
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = -0.2;
     ground.receiveShadow = true;
     scene.add(ground);
 
-    // Trees (Instanced)
-    const treeGeo = new THREE.ConeGeometry(15, 40, 6);
-    const treeMat = new THREE.MeshLambertMaterial({color: 0x0d4a0d});
-    const treeMesh = new THREE.InstancedMesh(treeGeo, treeMat, 800);
-    const dummy = new THREE.Object3D();
-    for (let i = 0; i < 800; i++) {
-        dummy.position.set((Math.random()-0.5)*8000, 20, (Math.random()-0.5)*8000);
-        dummy.scale.setScalar(1 + Math.random());
-        dummy.updateMatrix();
-        treeMesh.setMatrixAt(i, dummy.matrix);
-    }
-    treeMesh.castShadow = true;
-    scene.add(treeMesh);
-
-    // --- RING SYSTEM ---
-    const ringGeo = new THREE.TorusGeometry(15, 1.5, 8, 24);
-    const ringMat = new THREE.MeshPhongMaterial({ color: 0xffff00, emissive: 0xaa6600, shininess: 100 });
-    
-    function spawnRing(index) {
-        const ring = new THREE.Mesh(ringGeo, ringMat);
-        ring.position.set(
-            (Math.random() - 0.5) * 4000,
-            50 + Math.random() * 400,
-            (Math.random() - 0.5) * 4000
-        );
-        ring.rotation.y = Math.random() * Math.PI;
-        scene.add(ring);
-        rings[index] = ring;
-    }
-
-    for(let i=0; i<NUM_RINGS; i++) {
-        spawnRing(i);
-    }
-
     // --- INPUT HANDLING ---
-    const keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false, w: false, s: false };
+    const keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false, w: false, s: false, " ": false };
     
     window.addEventListener('keydown', (e) => {
         if(keys.hasOwnProperty(e.key) || keys.hasOwnProperty(e.key.toLowerCase())) keys[e.key] = true;
@@ -320,8 +335,7 @@
             jetPivot.position.set(0, 1.0, 0);
             jetPivot.rotation.set(0, 0, 0);
             playerParams.crashed = false;
-            score = 0;
-            document.getElementById('scoreVal').innerText = score;
+            // Optional: reset score? Let's keep score for fun.
             document.getElementById('crashScreen').style.display = 'none';
         }, 2000);
     }
@@ -339,8 +353,7 @@
         if (keys.s && playerParams.throttle > 0) playerParams.throttle -= 1.5;
 
         let targetKts = (playerParams.throttle / 100) * MAX_KTS;
-        // Glide logic: if throttle 0 but diving, gain speed
-        if(jetPivot.rotation.x < -0.2 && !playerParams.isOnGround) targetKts += 100;
+        if(jetPivot.rotation.x < -0.2 && !playerParams.isOnGround) targetKts += 100; // Dive boost
 
         playerParams.speedKts += (targetKts - playerParams.speedKts) * 0.02;
         let moveSpeed = (playerParams.speedKts / 300) * WORLD_SPEED_MULT;
@@ -367,9 +380,48 @@
         // 3. Move Aircraft
         jetPivot.translateZ(-moveSpeed);
 
-        // 4. Ground Physics
-        let groundLevel = 2.5; 
+        // 4. Weapon Logic
+        if (playerParams.cooldown > 0) playerParams.cooldown--;
         
+        if (keys[" "] && playerParams.cooldown <= 0 && !playerParams.isOnGround) {
+            fireBullet();
+            playerParams.cooldown = FIRE_RATE;
+        }
+
+        // Update Bullets
+        for (let i = bullets.length - 1; i >= 0; i--) {
+            const b = bullets[i];
+            b.mesh.translateZ(-BULLET_SPEED); // Move bullet forward locally
+            b.life--;
+
+            // Check collision with targets
+            let hit = false;
+            for (let j = 0; j < targets.length; j++) {
+                if (b.mesh.position.distanceTo(targets[j].position) < 15) {
+                    // Hit!
+                    hit = true;
+                    score++;
+                    document.getElementById('scoreVal').innerText = score;
+                    
+                    // Respawn target elsewhere
+                    targets[j].position.set(
+                        (Math.random() - 0.5) * 4000,
+                        4,
+                        (Math.random() - 0.5) * 4000
+                    );
+                    break;
+                }
+            }
+
+            // Remove bullet if hit or expired or hit ground
+            if (hit || b.life <= 0 || b.mesh.position.y < 0) {
+                scene.remove(b.mesh);
+                bullets.splice(i, 1);
+            }
+        }
+
+        // 5. Ground Physics
+        let groundLevel = 2.5; 
         if (jetPivot.position.y <= groundLevel) {
             // CRASH LOGIC
             if (jetPivot.rotation.x > 0.15 || Math.abs(jetPivot.rotation.z) > 0.6) {
@@ -388,27 +440,9 @@
             playerParams.isOnGround = false;
         }
 
-        // 5. Ring Collision
-        rings.forEach((ring, idx) => {
-            ring.rotation.z += 0.02; 
-            ring.rotation.y += 0.01;
-            
-            if (jetPivot.position.distanceTo(ring.position) < 20) {
-                score += 100;
-                document.getElementById('scoreVal').innerText = score;
-                ring.position.set(
-                     jetPivot.position.x + (Math.random()-0.5)*3000,
-                     50 + Math.random()*500,
-                     jetPivot.position.z - (1000 + Math.random()*2000)
-                );
-                playerParams.speedKts += 20; 
-            }
-        });
-
         // 6. Trails
         const engineWorldPos = new THREE.Vector3();
         engine.getWorldPosition(engineWorldPos);
-        
         const positions = trailParticles.geometry.attributes.position.array;
         if (playerParams.speedKts > 20) {
             for (let i = (TRAIL_LENGTH - 1) * 3; i > 0; i -= 3) {
@@ -423,9 +457,8 @@
         trailParticles.geometry.attributes.position.needsUpdate = true;
 
         // 7. Steady Camera (No speed warping)
-        const idealOffset = new THREE.Vector3(0, 7, 22);
+        const idealOffset = new THREE.Vector3(0, 8, 25);
         idealOffset.applyMatrix4(jetPivot.matrixWorld);
-        
         camera.position.lerp(idealOffset, 0.1);
         const lookTarget = new THREE.Vector3(0, 0, -50);
         lookTarget.applyMatrix4(jetPivot.matrixWorld);
