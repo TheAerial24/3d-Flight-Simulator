@@ -2,28 +2,29 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Realistic Jet Sim</title>
+    <title>Jet Sim - Solid Ground</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #87CEEB; font-family: 'Courier New', Courier, monospace; }
         #hud {
             position: absolute;
             bottom: 20px;
             left: 20px;
-            color: #00ff00; /* Radar Green */
-            background: rgba(0, 0, 0, 0.6);
+            color: #33ff33;
+            background: rgba(0, 0, 0, 0.7);
             padding: 15px;
-            border: 2px solid #00ff00;
+            border: 2px solid #33ff33;
             border-radius: 5px;
             pointer-events: none;
             user-select: none;
             font-weight: bold;
+            font-size: 14px;
         }
         #instructions {
             position: absolute;
             top: 20px;
             left: 20px;
             color: white;
-            background: rgba(0, 0, 0, 0.4);
+            background: rgba(0, 0, 0, 0.5);
             padding: 10px;
             border-radius: 5px;
             pointer-events: none;
@@ -33,146 +34,155 @@
             height: 10px;
             background: #333;
             margin-top: 5px;
-            border: 1px solid #00ff00;
+            border: 1px solid #33ff33;
         }
         #throttleBar {
             width: 50%;
             height: 100%;
-            background: #00ff00;
+            background: #33ff33;
             transition: width 0.1s linear;
         }
+        .status-light {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: #555;
+            margin-right: 5px;
+        }
+        .on-ground { background-color: orange; box-shadow: 0 0 5px orange; }
+        .airborne { background-color: #33ff33; box-shadow: 0 0 5px #33ff33; }
     </style>
 </head>
 <body>
 
 <div id="instructions">
-    <b>FLIGHT CONTROLS:</b><br>
+    <b>CONTROLS:</b><br>
     ⬆ / ⬇ : Pitch (Nose Up/Down)<br>
-    ⬅ / ➡ : Roll & Turn<br>
-    <b>W</b> : Increase Throttle<br>
-    <b>S</b> : Decrease Throttle
+    ⬅ / ➡ : Roll (Turn)<br>
+    <b>W</b> : Throttle UP<br>
+    <b>S</b> : Throttle DOWN<br>
+    <i>Tip: You need speed (> 0.4 Mach) to take off!</i>
 </div>
 
 <div id="hud">
+    <div><span id="statusLight" class="status-light on-ground"></span> <span id="statusText">GROUND</span></div>
+    <br>
     <div>THROTTLE: <span id="throtVal">50</span>%</div>
     <div class="bar-container"><div id="throttleBar"></div></div>
     <br>
-    <div>MACH: <span id="spdVal">0.75</span></div>
-    <div>ALT: <span id="altVal">200</span> FT</div>
+    <div>SPEED: <span id="spdVal">0.00</span> MACH</div>
+    <div>ALTITUDE: <span id="altVal">0</span> FT</div>
 </div>
 
 <script type="module">
     import * as THREE from 'https://unpkg.com/three@0.126.0/build/three.module.js';
 
     // --- CONFIGURATION ---
-    const MAX_MACH = 1.5;         // Max speed requested
-    const INERTIA = 0.005;        // How slowly speed changes (Lower = heavier plane)
-    const TURN_SPEED = 0.04;      // How fast it turns
-    
+    const MAX_MACH = 1.5;
+    const TAKEOFF_SPEED = 0.6; // Speed required to lift nose
+    const INERTIA = 0.008;     // Acceleration curve
+    const TURN_SPEED = 0.03;
+    const GROUND_LEVEL = 1.5;  // Y height where wheels touch ground (half of jet height)
+
     // --- SCENE SETUP ---
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x87CEEB);
-    // Fog helps give a sense of distance and speed
-    scene.fog = new THREE.Fog(0x87CEEB, 200, 900);
+    scene.fog = new THREE.Fog(0x87CEEB, 200, 1500); // Hides the edge of the grid
 
-    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2000);
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 5000);
     
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true; // Turn on shadows for depth perception
     document.body.appendChild(renderer.domElement);
 
     // --- LIGHTS ---
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
     scene.add(ambientLight);
-    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    dirLight.position.set(50, 100, 50);
-    scene.add(dirLight);
+    
+    const sunLight = new THREE.DirectionalLight(0xffffff, 1);
+    sunLight.position.set(100, 200, 50);
+    sunLight.castShadow = true;
+    // Optimize shadow map
+    sunLight.shadow.camera.left = -50;
+    sunLight.shadow.camera.right = 50;
+    sunLight.shadow.camera.top = 50;
+    sunLight.shadow.camera.bottom = -50;
+    sunLight.shadow.mapSize.width = 2048;
+    sunLight.shadow.mapSize.height = 2048;
+    scene.add(sunLight);
 
     // --- BUILD THE JET ---
     const jetGroup = new THREE.Group();
     
-    // Main Body
-    const bodyGeo = new THREE.ConeGeometry(0.5, 4, 32);
-    bodyGeo.rotateX(Math.PI / 2);
-    const bodyMat = new THREE.MeshPhongMaterial({ color: 0xcccccc, flatShading: true });
-    const body = new THREE.Mesh(bodyGeo, bodyMat);
-    jetGroup.add(body);
-
-    // Cockpit
-    const cockGeo = new THREE.BoxGeometry(0.4, 0.3, 1);
-    const cockMat = new THREE.MeshPhongMaterial({ color: 0x333333 });
-    const cockpit = new THREE.Mesh(cockGeo, cockMat);
-    cockpit.position.set(0, 0.3, 0.5);
-    jetGroup.add(cockpit);
+    // Fuselage
+    const geometryBody = new THREE.ConeGeometry(0.5, 4, 32);
+    geometryBody.rotateX(Math.PI / 2);
+    const materialBody = new THREE.MeshPhongMaterial({ color: 0xdddddd, flatShading: true });
+    const fuselage = new THREE.Mesh(geometryBody, materialBody);
+    fuselage.castShadow = true;
+    jetGroup.add(fuselage);
 
     // Wings
-    const wingGeo = new THREE.BufferGeometry();
-    const wingVertices = new Float32Array([
-        2.5, 0, 1.0,   // tip left
-        -2.5, 0, 1.0,  // tip right
-        0, 0, -1.0,    // front center
-        0, 0, 1.0      // back center
-    ]);
-    // Create a simple triangular wing shape
-    const wingShape = new THREE.BoxGeometry(5, 0.1, 2);
-    const wingMat = new THREE.MeshPhongMaterial({ color: 0x888888 });
-    const wings = new THREE.Mesh(wingShape, wingMat);
-    wings.position.set(0, 0, 0.8);
+    const geometryWings = new THREE.BoxGeometry(5, 0.1, 2);
+    const materialDark = new THREE.MeshPhongMaterial({ color: 0x555555 });
+    const wings = new THREE.Mesh(geometryWings, materialDark);
+    wings.position.set(0, 0, 0.5);
+    wings.castShadow = true;
     jetGroup.add(wings);
 
-    // Engine Fire (Visual Feedback for throttle)
-    const fireGeo = new THREE.ConeGeometry(0.3, 1, 8);
-    fireGeo.rotateX(-Math.PI / 2); // Point backward
-    const fireMat = new THREE.MeshBasicMaterial({ color: 0xffaa00, transparent: true, opacity: 0.8 });
-    const exhaust = new THREE.Mesh(fireGeo, fireMat);
-    exhaust.position.z = 2.5; 
-    jetGroup.add(exhaust);
+    // Vertical Stabilizer (Tail)
+    const geometryTail = new THREE.BoxGeometry(0.1, 1.2, 1.2);
+    const tail = new THREE.Mesh(geometryTail, materialDark);
+    tail.position.set(0, 0.6, 1.5);
+    tail.castShadow = true;
+    jetGroup.add(tail);
+
+    // Engine Exhaust (Visual)
+    const geometryExhaust = new THREE.CylinderGeometry(0.3, 0.1, 0.5, 10);
+    geometryExhaust.rotateX(Math.PI / 2);
+    const materialExhaust = new THREE.MeshBasicMaterial({ color: 0xff4500 });
+    const engine = new THREE.Mesh(geometryExhaust, materialExhaust);
+    engine.position.z = 2.1;
+    jetGroup.add(engine);
 
     scene.add(jetGroup);
-    jetGroup.position.y = 200; // Start high up
+    jetGroup.position.y = GROUND_LEVEL; // Start on ground
 
-    // --- WORLD OBJECTS (To show speed) ---
-    // We create a "cloud" of boxes that we loop around the player to simulate infinite flying
-    const objects = [];
-    const objGeo = new THREE.BoxGeometry(10, 10, 10);
-    const objMat = new THREE.MeshPhongMaterial({ color: 0xffffff, transparent: true, opacity: 0.6 });
-    
-    for(let i=0; i<100; i++) {
-        const mesh = new THREE.Mesh(objGeo, objMat);
-        // Random position spread out
-        mesh.position.set(
-            (Math.random() - 0.5) * 2000,
-            (Math.random() - 0.5) * 1000 + 200, // Keep them somewhat aloft
-            (Math.random() - 0.5) * 2000
-        );
-        scene.add(mesh);
-        objects.push(mesh);
-    }
+    // --- THE GROUND ---
+    // We make a massive plane to receive shadows
+    const groundGeo = new THREE.PlaneGeometry(10000, 10000);
+    const groundMat = new THREE.MeshPhongMaterial({ color: 0x2e8b57, depthWrite: false });
+    const groundMesh = new THREE.Mesh(groundGeo, groundMat);
+    groundMesh.rotation.x = -Math.PI / 2;
+    groundMesh.position.y = -0.1; // Just below the grid lines
+    groundMesh.receiveShadow = true;
+    scene.add(groundMesh);
 
-    // Ground Grid
-    const gridHelper = new THREE.GridHelper(4000, 100, 0x555555, 0x999999);
-    gridHelper.position.y = 0;
+    // Infinite Grid Helper
+    // We create a huge grid so you can fly for a long time
+    const gridHelper = new THREE.GridHelper(10000, 500, 0x000000, 0x555555);
     scene.add(gridHelper);
 
-    // --- VARIABLES ---
-    let throttle = 50; // Start at 50%
-    let speed = 0.75;  // Actual speed unit
+    // --- GAME VARIABLES ---
+    let throttle = 50; 
+    let speed = 0;
+    let isOnGround = true;
     
     // Input State
     const keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false, w: false, s: false };
 
-    // --- INPUT HANDLERS ---
+    // --- EVENT LISTENERS ---
     window.addEventListener('keydown', (e) => {
-        if(keys.hasOwnProperty(e.key) || keys.hasOwnProperty(e.key.toLowerCase())) {
-            keys[e.key] = true;
-            keys[e.key.toLowerCase()] = true;
-        }
+        if(keys.hasOwnProperty(e.key) || keys.hasOwnProperty(e.key.toLowerCase())) keys[e.key] = true;
+        if(e.key.toLowerCase() === 'w') keys.w = true;
+        if(e.key.toLowerCase() === 's') keys.s = true;
     });
     window.addEventListener('keyup', (e) => {
-        if(keys.hasOwnProperty(e.key) || keys.hasOwnProperty(e.key.toLowerCase())) {
-            keys[e.key] = false;
-            keys[e.key.toLowerCase()] = false;
-        }
+        if(keys.hasOwnProperty(e.key) || keys.hasOwnProperty(e.key.toLowerCase())) keys[e.key] = false;
+        if(e.key.toLowerCase() === 'w') keys.w = false;
+        if(e.key.toLowerCase() === 's') keys.s = false;
     });
     window.addEventListener('resize', () => {
         camera.aspect = window.innerWidth / window.innerHeight;
@@ -180,77 +190,109 @@
         renderer.setSize(window.innerWidth, window.innerHeight);
     });
 
-    // --- GAME LOOP ---
+    // --- MAIN LOOP ---
     function animate() {
         requestAnimationFrame(animate);
 
-        // 1. Throttle Logic (Target Setting)
+        // 1. Throttle Logic
         if (keys.w && throttle < 100) throttle += 0.5;
         if (keys.s && throttle > 0) throttle -= 0.5;
 
-        // 2. Physics: Gradual Speed Change (Realism)
-        // Calculate target speed based on Throttle %
-        // Max speed matches MAX_MACH
+        // 2. Calculate Speed (Mach)
         let targetSpeed = (throttle / 100) * MAX_MACH;
+        speed += (targetSpeed - speed) * INERTIA; // Smooth acceleration
         
-        // Simple Physics: Lerp current speed towards target speed
-        // The INERTIA constant determines how heavy the plane feels
-        speed += (targetSpeed - speed) * INERTIA;
-
-        // 3. Move Jet Forward
+        // 3. Move the Jet
+        // Real movement through the world
         jetGroup.translateZ(-speed);
 
-        // 4. Update Exhaust Visuals
-        // Make fire bigger/brighter with speed
-        exhaust.scale.setScalar(0.5 + (throttle/100));
-        exhaust.material.opacity = (throttle/100);
+        // 4. Ground Physics Check
+        if (jetGroup.position.y <= GROUND_LEVEL) {
+            isOnGround = true;
+            jetGroup.position.y = GROUND_LEVEL; // Snap to floor
+            
+            // Level the wings if on ground (Taxiing physics)
+            // We gently rotate Z back to 0
+            jetGroup.rotation.z *= 0.9;
+            // Level pitch if not trying to takeoff
+            if (!keys.ArrowUp) jetGroup.rotation.x *= 0.9;
+        } else {
+            isOnGround = false;
+        }
 
-        // 5. Controls (Pitch & Roll)
-        // Note: Speed affects turning radius slightly (faster = wider turns logic could be added, but keeping it simple for now)
-        if (keys.ArrowUp) jetGroup.rotateX(-TURN_SPEED);
-        if (keys.ArrowDown) jetGroup.rotateX(TURN_SPEED);
+        // 5. Steering Controls
         
+        // PITCH (Up/Down)
+        if (keys.ArrowUp) {
+            // Can only pitch up if airborne OR speed is high enough to takeoff
+            if (!isOnGround || speed > TAKEOFF_SPEED) {
+                jetGroup.rotateX(-TURN_SPEED);
+            }
+        }
+        if (keys.ArrowDown) {
+            // Can only pitch down if airborne
+            if (!isOnGround) {
+                jetGroup.rotateX(TURN_SPEED);
+            }
+        }
+
+        // ROLL (Left/Right)
         if (keys.ArrowLeft) {
-            jetGroup.rotateZ(TURN_SPEED); // Roll
-            jetGroup.rotateY(TURN_SPEED * 0.5); // Add a little Yaw for easier steering
+            if (!isOnGround) jetGroup.rotateZ(TURN_SPEED); // Roll
+            jetGroup.rotateY(TURN_SPEED * 0.5); // Yaw (Turn)
         }
         if (keys.ArrowRight) {
-            jetGroup.rotateZ(-TURN_SPEED);
-            jetGroup.rotateY(-TURN_SPEED * 0.5);
+            if (!isOnGround) jetGroup.rotateZ(-TURN_SPEED); // Roll
+            jetGroup.rotateY(-TURN_SPEED * 0.5); // Yaw (Turn)
         }
 
-        // 6. Camera Follow (Smooth)
-        const relativeOffset = new THREE.Vector3(0, 5, 15);
+        // 6. Camera Follow
+        const relativeOffset = new THREE.Vector3(0, 6, 18);
         const cameraOffset = relativeOffset.applyMatrix4(jetGroup.matrixWorld);
+        
+        // Make camera 'loose' (lag behind slightly) for speed feeling
         camera.position.lerp(cameraOffset, 0.1);
         camera.lookAt(jetGroup.position);
 
-        // 7. World Management (Infinite Flight Trick)
-        // Move the grid with the player so they never run out of floor
-        gridHelper.position.x = jetGroup.position.x;
-        gridHelper.position.z = jetGroup.position.z;
+        // 7. Infinite Grid Illusion
+        // To make the world feel endless, we snap the grid to the player's position
+        // but locked to intervals of 100 so it doesn't look like it's sliding with us
+        const gridSize = 10000;
+        const cellSize = 20; // Size of grid squares
+        
+        // Currently using a massive static grid (10000 units). 
+        // If you fly for 10 minutes straight you might hit the edge, but for this demo it's fine.
+        // The shadow map follows the plane to keep shadows crisp
+        sunLight.position.x = jetGroup.position.x + 50;
+        sunLight.position.y = jetGroup.position.y + 200;
+        sunLight.position.z = jetGroup.position.z + 50;
+        sunLight.target = jetGroup;
 
-        // Reposition floating cubes if they get too far behind
-        // This is crucial for the sense of speed!
-        objects.forEach(obj => {
-            if (jetGroup.position.distanceTo(obj.position) > 1000) {
-                // If object is too far, move it in front of the player
-                obj.position.copy(jetGroup.position);
-                // Add random offset ahead
-                obj.position.x += (Math.random() - 0.5) * 1000;
-                obj.position.y += (Math.random() - 0.5) * 500;
-                // Place it far ahead in the direction the jet is facing
-                const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(jetGroup.quaternion);
-                forward.multiplyScalar(800 + Math.random() * 500);
-                obj.position.add(forward);
-            }
-        });
-
-        // 8. Update HUD
+        // 8. Update HUD & Visuals
         document.getElementById('throtVal').innerText = Math.round(throttle);
         document.getElementById('throttleBar').style.width = throttle + '%';
-        document.getElementById('spdVal').innerText = speed.toFixed(2); // Display as Mach
-        document.getElementById('altVal').innerText = Math.round(jetGroup.position.y);
+        document.getElementById('spdVal').innerText = speed.toFixed(2);
+        
+        // Altitude: (Real Y - Ground Level)
+        let alt = Math.round((jetGroup.position.y - GROUND_LEVEL) * 10);
+        document.getElementById('altVal').innerText = alt;
+
+        // Status Light
+        const light = document.getElementById('statusLight');
+        const text = document.getElementById('statusText');
+        if(isOnGround) {
+            light.className = "status-light on-ground";
+            text.innerText = "GROUND";
+            text.style.color = "orange";
+        } else {
+            light.className = "status-light airborne";
+            text.innerText = "AIRBORNE";
+            text.style.color = "#33ff33";
+        }
+
+        // Engine flicker
+        engine.scale.setScalar(0.8 + Math.random() * 0.2 * (throttle/100));
+        engine.material.color.setHSL(0.05 + (throttle/500), 1, 0.5);
 
         renderer.render(scene, camera);
     }
