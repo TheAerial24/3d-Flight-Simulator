@@ -57,6 +57,7 @@
             width: 40px; height: 40px;
             transform: translate(-50%, -50%);
             pointer-events: none;
+            z-index: 100;
         }
         #crosshair::before, #crosshair::after {
             content: '';
@@ -113,7 +114,7 @@
     <b>CONTROLS:</b><br>
     ⬆ / ⬇ : Pitch (Nose)<br>
     ⬅ / ➡ : Roll (Bank Only)<br>
-    <i>(Bank 90° & Pull Up to turn)</i><br>
+    <b>C</b> : Toggle Camera<br>
     <b>W</b> : Throttle<br>
     <b>S</b> : Airbrake<br>
     <b>SPACE</b> : Fire Guns
@@ -145,11 +146,14 @@
     const ROLL_SPEED = 0.05;
 
     // --- WEAPON & TARGET VARIABLES ---
-    const BULLET_SPEED = 25; 
-    const FIRE_RATE = 6; 
+    const BULLET_SPEED = 30; 
+    const FIRE_RATE = 5; 
     const NUM_TARGETS = 50;  
     const MAP_SIZE = 15000;  
     let score = 0;
+    
+    // 0 = Chase, 1 = Cockpit
+    let cameraMode = 1; 
 
     // --- SCENE SETUP ---
     const scene = new THREE.Scene();
@@ -205,7 +209,7 @@
     jetMeshGroup.add(fuselage);
 
     // Cockpit Glass
-    const cockpitMat = new THREE.MeshPhongMaterial({ color: 0x111111, shininess: 100, transparent: true, opacity: 0.4 });
+    const cockpitMat = new THREE.MeshPhongMaterial({ color: 0x111111, shininess: 100, transparent: true, opacity: 0.3 });
     const cockpit = new THREE.Mesh(new THREE.ConeGeometry(0.45, 2.2, 8), cockpitMat);
     cockpit.rotation.x = Math.PI/2;
     cockpit.position.set(0, 0.35, 0.2);
@@ -214,29 +218,25 @@
 
     // --- VISUAL YOKE (THE STICK) ---
     const yokeGroup = new THREE.Group();
-    // Position it inside the cockpit area
-    yokeGroup.position.set(0, 0.3, 0.8); 
+    yokeGroup.position.set(0, 0.2, 0.8); 
     jetMeshGroup.add(yokeGroup);
 
-    // Yoke Shaft (The stick going down)
-    const stickGeo = new THREE.CylinderGeometry(0.02, 0.02, 0.4, 8);
-    const yokeMat = new THREE.MeshPhongMaterial({ color: 0x111111 });
+    // Yoke Shaft
+    const stickGeo = new THREE.CylinderGeometry(0.02, 0.02, 0.5, 8);
+    const yokeMat = new THREE.MeshPhongMaterial({ color: 0xAAAAAA }); 
     const stick = new THREE.Mesh(stickGeo, yokeMat);
-    stick.position.y = -0.2;
+    stick.position.y = -0.25;
     yokeGroup.add(stick);
 
-    // Yoke Handle (The U shape)
-    // Left part
+    // Yoke Handle (U Shape)
     const handleL = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.15, 0.04), yokeMat);
     handleL.position.set(-0.1, 0, 0);
     yokeGroup.add(handleL);
     
-    // Right part
     const handleR = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.15, 0.04), yokeMat);
     handleR.position.set(0.1, 0, 0);
     yokeGroup.add(handleR);
 
-    // Bottom connector
     const handleB = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.04, 0.04), yokeMat);
     handleB.position.set(0, -0.06, 0);
     yokeGroup.add(handleB);
@@ -296,10 +296,22 @@
     function fireBullet() {
         const b = new THREE.Mesh(bulletGeo, bulletMat);
         b.position.copy(jetPivot.position);
-        b.rotation.copy(jetPivot.rotation);
-        b.translateZ(-5); 
+        
+        // 1. Calculate Aim Point based on Camera Look Direction (Crosshair)
+        // We project a point far in front of the camera
+        const aimDistance = 1000;
+        const vector = new THREE.Vector3(0, 0, -1);
+        vector.applyQuaternion(camera.quaternion); // Get camera facing direction
+        const aimPoint = camera.position.clone().add(vector.multiplyScalar(aimDistance));
+        
+        // 2. Rotate bullet to look at that distant point
+        b.lookAt(aimPoint);
+        
+        // 3. Offset bullet slightly forward so it doesn't clip plane
+        b.translateZ(2); 
+
         scene.add(b);
-        bullets.push({ mesh: b, life: 80 }); 
+        bullets.push({ mesh: b, life: 100 }); 
     }
 
     // --- ENVIRONMENT ---
@@ -337,12 +349,15 @@
     scene.add(treeMesh);
 
     // --- INPUT HANDLING ---
-    const keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false, w: false, s: false, " ": false };
+    const keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false, w: false, s: false, " ": false, c: false };
     
     window.addEventListener('keydown', (e) => {
         if(keys.hasOwnProperty(e.key) || keys.hasOwnProperty(e.key.toLowerCase())) keys[e.key] = true;
         if(e.key.toLowerCase() === 'w') keys.w = true;
         if(e.key.toLowerCase() === 's') keys.s = true;
+        if(e.key.toLowerCase() === 'c') {
+            cameraMode = (cameraMode === 0) ? 1 : 0; // Toggle
+        }
     });
     window.addEventListener('keyup', (e) => {
         if(keys.hasOwnProperty(e.key) || keys.hasOwnProperty(e.key.toLowerCase())) keys[e.key] = false;
@@ -391,20 +406,20 @@
             if (playerParams.speedKts > TAKEOFF_KTS || !playerParams.isOnGround) {
                 jetPivot.rotateX(-PITCH_SPEED);
             }
-            yokePitch = -0.1; // Pull back visually
+            yokePitch = -0.1; 
         }
         if (keys.ArrowDown) {
             jetPivot.rotateX(PITCH_SPEED);
-            yokePitch = 0.1; // Push forward visually
+            yokePitch = 0.1; 
         }
         
         if (keys.ArrowLeft) {
             jetPivot.rotateZ(ROLL_SPEED); 
-            yokeRot = 0.5; // Rotate left visually
+            yokeRot = 0.5; 
         }
         if (keys.ArrowRight) {
             jetPivot.rotateZ(-ROLL_SPEED);
-            yokeRot = -0.5; // Rotate right visually
+            yokeRot = -0.5; 
         }
 
         // Animate Yoke Visuals
@@ -425,7 +440,9 @@
         // Update Bullets
         for (let i = bullets.length - 1; i >= 0; i--) {
             const b = bullets[i];
-            b.mesh.translateZ(-BULLET_SPEED); 
+            
+            // Move bullet forward relative to its own facing direction (which is now aimed at crosshair)
+            b.mesh.translateZ(BULLET_SPEED); 
             b.life--;
 
             // Check collision
@@ -469,14 +486,25 @@
             playerParams.isOnGround = false;
         }
 
-        // 6. Camera (Locked Tightly)
-        const idealOffset = new THREE.Vector3(0, 8, 25);
-        idealOffset.applyMatrix4(jetPivot.matrixWorld);
-        camera.position.lerp(idealOffset, 1.0);
+        // 6. Camera Logic
+        // Calculate offsets relative to the jet
+        let offsetMsg, lookMsg;
         
-        const lookTarget = new THREE.Vector3(0, 0, -50);
-        lookTarget.applyMatrix4(jetPivot.matrixWorld);
-        camera.lookAt(lookTarget);
+        if (cameraMode === 0) { // Third Person (Chase)
+            // FIXED: Lower height and parallel alignment to prevent "Orbiting" effect
+            offsetMsg = new THREE.Vector3(0, 5, 25); 
+            lookMsg = new THREE.Vector3(0, 5, -50); 
+        } else { // Cockpit
+            offsetMsg = new THREE.Vector3(0, 0.6, 0.4); 
+            lookMsg = new THREE.Vector3(0, 0.6, -10); 
+        }
+        
+        offsetMsg.applyMatrix4(jetPivot.matrixWorld);
+        lookMsg.applyMatrix4(jetPivot.matrixWorld);
+
+        // Snap camera tightly (1.0 lerp) so no drift
+        camera.position.lerp(offsetMsg, 1.0);
+        camera.lookAt(lookMsg);
 
         // Shadows
         sun.position.x = jetPivot.position.x + 100;
