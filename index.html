@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Jet Stream: Titan Targets</title>
+    <title>Jet Stream: Titan Targets v2</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #87CEEB; font-family: 'Courier New', Courier, monospace; }
         
@@ -36,6 +36,7 @@
             font-weight: bold;
             text-shadow: 2px 2px 0 #000;
             pointer-events: none;
+            text-align: right;
         }
 
         #instructions {
@@ -51,6 +52,7 @@
             border-left: 5px solid #ff3333;
         }
 
+        /* CHANGED TO RED SO YOU KNOW IT UPDATED */
         #crosshair {
             position: absolute;
             top: 50%; left: 50%;
@@ -62,7 +64,8 @@
         #crosshair::before, #crosshair::after {
             content: '';
             position: absolute;
-            background: rgba(0, 255, 0, 0.8);
+            background: rgba(255, 0, 0, 0.9); /* RED CROSSHAIR */
+            box-shadow: 0 0 4px red;
         }
         #crosshair::before { top: 19px; left: 0; width: 40px; height: 2px; } 
         #crosshair::after { left: 19px; top: 0; height: 40px; width: 2px; } 
@@ -107,7 +110,10 @@
     <div style="font-size:20px; margin-top:10px;">Resetting Systems...</div>
 </div>
 
-<div id="score-board">DESTROYED: <span id="scoreVal">0</span></div>
+<div id="score-board">
+    DESTROYED: <span id="scoreVal">0</span><br>
+    <span style="font-size:12px; color:white;">v2.0 FIXED</span>
+</div>
 
 <div id="instructions">
     <b>MISSION:</b> Destroy Red Bases<br><br>
@@ -146,14 +152,15 @@
     const ROLL_SPEED = 0.05;
 
     // --- WEAPON & TARGET VARIABLES ---
-    const BULLET_SPEED = 30; 
+    const BULLET_SPEED = 40; // Faster bullets
     const FIRE_RATE = 5; 
     const NUM_TARGETS = 50;  
     const MAP_SIZE = 15000;  
     let score = 0;
     
-    // 0 = Chase, 1 = Cockpit
-    let cameraMode = 1; 
+    // 0 = Chase (Third Person), 1 = Cockpit
+    // DEFAULT IS NOW 0 (3rd Person) so you see the plane immediately
+    let cameraMode = 0; 
 
     // --- SCENE SETUP ---
     const scene = new THREE.Scene();
@@ -270,7 +277,7 @@
     const bullets = [];
     const targets = [];
 
-    const bulletGeo = new THREE.BoxGeometry(0.2, 0.2, 4);
+    const bulletGeo = new THREE.BoxGeometry(0.2, 0.2, 8); // Longer tracers
     const bulletMat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
 
     const bunkerGeo = new THREE.BoxGeometry(50, 40, 50); 
@@ -297,18 +304,17 @@
         const b = new THREE.Mesh(bulletGeo, bulletMat);
         b.position.copy(jetPivot.position);
         
-        // 1. Calculate Aim Point based on Camera Look Direction (Crosshair)
-        // We project a point far in front of the camera
-        const aimDistance = 1000;
+        // --- FIXED ACCURACY LOGIC ---
+        // 1. Get position 1000 units in front of CAMERA (where crosshair points)
         const vector = new THREE.Vector3(0, 0, -1);
-        vector.applyQuaternion(camera.quaternion); // Get camera facing direction
-        const aimPoint = camera.position.clone().add(vector.multiplyScalar(aimDistance));
+        vector.applyQuaternion(camera.quaternion); 
+        const aimPoint = camera.position.clone().add(vector.multiplyScalar(2000));
         
-        // 2. Rotate bullet to look at that distant point
+        // 2. Rotate bullet to face that point
         b.lookAt(aimPoint);
         
-        // 3. Offset bullet slightly forward so it doesn't clip plane
-        b.translateZ(2); 
+        // 3. Move bullet slightly forward to clear the plane body
+        b.translateZ(5); 
 
         scene.add(b);
         bullets.push({ mesh: b, life: 100 }); 
@@ -441,7 +447,7 @@
         for (let i = bullets.length - 1; i >= 0; i--) {
             const b = bullets[i];
             
-            // Move bullet forward relative to its own facing direction (which is now aimed at crosshair)
+            // Move bullet forward relative to its own facing direction
             b.mesh.translateZ(BULLET_SPEED); 
             b.life--;
 
@@ -486,14 +492,15 @@
             playerParams.isOnGround = false;
         }
 
-        // 6. Camera Logic
-        // Calculate offsets relative to the jet
+        // 6. Camera Logic (FIXED FOR CENTER ALIGNMENT)
         let offsetMsg, lookMsg;
         
         if (cameraMode === 0) { // Third Person (Chase)
-            // FIXED: Lower height and parallel alignment to prevent "Orbiting" effect
-            offsetMsg = new THREE.Vector3(0, 5, 25); 
-            lookMsg = new THREE.Vector3(0, 5, -50); 
+            // Position: Strictly behind (Z: +30) and above (Y: +8)
+            offsetMsg = new THREE.Vector3(0, 8, 30); 
+            // Look At: Strictly forward (Z: -100) relative to jet
+            // This ensures the jet is in the center of the X-axis
+            lookMsg = new THREE.Vector3(0, 0, -100); 
         } else { // Cockpit
             offsetMsg = new THREE.Vector3(0, 0.6, 0.4); 
             lookMsg = new THREE.Vector3(0, 0.6, -10); 
@@ -502,7 +509,7 @@
         offsetMsg.applyMatrix4(jetPivot.matrixWorld);
         lookMsg.applyMatrix4(jetPivot.matrixWorld);
 
-        // Snap camera tightly (1.0 lerp) so no drift
+        // Instant Lock (Lerp 1.0) so no swaying
         camera.position.lerp(offsetMsg, 1.0);
         camera.lookAt(lookMsg);
 
