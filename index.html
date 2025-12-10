@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Jet Stream - Fixed Controls</title>
+    <title>Jet Stream - Drift Fixed</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #87CEEB; font-family: 'Courier New', Courier, monospace; }
         
@@ -112,7 +112,7 @@
 
 <div id="score-board">
     DESTROYED: <span id="scoreVal">0</span><br>
-    <span style="font-size:12px; color:white;">REAL-FLIGHT v2</span>
+    <span style="font-size:12px; color:white;">REAL-FLIGHT v3</span>
 </div>
 
 <div id="instructions">
@@ -151,11 +151,11 @@
     const MAX_SPEED_MS   = 340;        
     const KTS_PER_MS     = 1.94384;    
 
-    const PITCH_SPEED    = 1.2;        // rad/sec
-    const ROLL_SPEED     = 2.0;        // rad/sec
-    const TURN_STRENGTH  = 0.5;        // How much banking creates yaw
+    const PITCH_SPEED    = 1.2;        
+    const ROLL_SPEED     = 2.0;        
+    const TURN_STRENGTH  = 0.5;        
 
-    const BULLET_SPEED   = 600;        
+    const BULLET_SPEED   = 800;        
     const FIRE_INTERVAL  = 0.08;       
     const NUM_TARGETS    = 50;
     const MAP_SIZE       = 15000;
@@ -414,7 +414,7 @@
         speedMS += (targetMS - speedMS) * (2.0 * delta); 
         playerParams.speedKts = speedMS * KTS_PER_MS;
 
-        // --- 2. CONTROL INPUTS (FIXED FOR REAL PLANE FEEL) ---
+        // --- 2. CONTROL INPUTS ---
         let controlEffect = THREE.MathUtils.clamp(playerParams.speedKts / 150, 0, 1);
         controlEffect = Math.max(controlEffect, 0.2); 
 
@@ -424,18 +424,14 @@
         const pitchRate = PITCH_SPEED * controlEffect * delta;
         const rollRate  = ROLL_SPEED  * controlEffect * delta;
 
-        // --- FIX: USE LOCAL ROTATION TO PREVENT AXIS SWITCHING ---
         // Pitch Logic (Inverted Flight Sim Style)
         if (keys.ArrowUp) {
-             // Push nose down
-             // In ThreeJS -Z forward, Negative X rotation is Nose DOWN
              jetPivot.rotateX(-pitchRate); 
              yokePitch = -0.12; 
         }
         if (keys.ArrowDown) {
-            // Pull nose up (Takeoff)
+            // Takeoff
             if (!playerParams.isOnGround || playerParams.speedKts > TAKEOFF_KTS) {
-                // In ThreeJS -Z forward, Positive X rotation is Nose UP
                 jetPivot.rotateX(pitchRate); 
             }
             yokePitch = 0.12;
@@ -451,26 +447,23 @@
             yokeRot = -0.55;
         }
 
-        // --- 3. PHYSICS & AERODYNAMICS ---
+        // --- 3. PHYSICS & AERODYNAMICS (FIXED) ---
         
-        // Bank-to-Turn Logic: 
-        // When banked, the lift vector pulls the nose sideways (Yaw).
-        // We get the 'Z' rotation (roll) to determine how hard to Yaw.
+        // Determine Bank Angle using the RIGHT WING vector relative to WORLD UP
+        // This fixes the bug where "Turning West" caused the math to break.
+        const rightWing = new THREE.Vector3(1, 0, 0).applyQuaternion(jetPivot.quaternion);
         
-        // To get "Bank" cleanly without Euler Lock issues, we cheat slightly for arcade feel:
-        // We project the local Up vector to World Up.
-        const localUp = new THREE.Vector3(0, 1, 0).applyQuaternion(jetPivot.quaternion);
-        // Calculate a pseudo-roll factor based on how much 'Up' is leaning sideways
-        const rollFactor = -localUp.x; // Simplified for arcade feel
-        
+        // If Right Wing is DOWN (negative Y), we are banked RIGHT.
+        // If Right Wing is UP (positive Y), we are banked LEFT.
+        const bankVal = -rightWing.y; 
+
         if (!playerParams.isOnGround) {
-            // Apply LOCAL Yaw based on bank angle
-            jetPivot.rotateY(rollFactor * TURN_STRENGTH * delta * (playerParams.speedKts/300));
+            // Apply yaw based on how banked we are (Arcade physics)
+            jetPivot.rotateY(bankVal * TURN_STRENGTH * delta * (playerParams.speedKts/300));
         }
 
-        // Stall Logic (Gravity pulls nose down if slow)
+        // Stall Logic 
         if (playerParams.speedKts < STALL_KTS && !playerParams.isOnGround) {
-            // Stronger nose drop
             jetPivot.rotateX(-1.5 * delta); 
         }
 
@@ -479,19 +472,16 @@
         yokeGroup.position.z += ((-0.7 + yokePitch) - yokeGroup.position.z) * 0.1;
 
         // --- 4. MOVEMENT ---
-        // Move forward locally along -Z axis
         jetPivot.translateZ(-speedMS * delta);
 
         // --- 5. GROUND HANDLING ---
         if (jetPivot.position.y <= groundLevel) {
             
-            // Check crash conditions
-            // We need to check the angle relative to world up
             const forward = new THREE.Vector3(0,0,-1).applyQuaternion(jetPivot.quaternion);
-            const pitchAngle = Math.asin(forward.y); // approx pitch relative to horizon
+            const pitchAngle = Math.asin(forward.y); 
 
-            const tooNoseDown = pitchAngle < -0.2; // roughly -11 degrees
-            const tooBanked   = Math.abs(rollFactor) > 0.5; // roughly 30 degrees
+            const tooNoseDown = pitchAngle < -0.2; 
+            const tooBanked   = Math.abs(bankVal) > 0.5; 
             const tooFast     = playerParams.speedKts > 100;
 
             if ((tooNoseDown || tooBanked) && tooFast) {
@@ -500,20 +490,9 @@
                 return;
             }
 
-            // On runway
             playerParams.isOnGround = true;
             jetPivot.position.y = groundLevel;
             
-            // Level wings smoothly
-            // We use a simple trick: Rotate towards upright quaternion
-            const currentQ = jetPivot.quaternion.clone();
-            // Create a target quaternion that is just Yaw (keep heading) but flat pitch/roll
-            // This is complex, simplified: just damp X and Z rotation effects
-            // (Arcade logic: Force level if throttle low)
-             if (playerParams.throttle < 50) {
-                 // Slowly unroll
-             }
-
         } else {
             playerParams.isOnGround = false;
         }
@@ -527,7 +506,7 @@
 
         for (let i = bullets.length - 1; i >= 0; i--) {
             const b = bullets[i];
-            b.mesh.translateZ(-BULLET_SPEED * delta); // Local Z forward (negative)
+            b.mesh.translateZ(-BULLET_SPEED * delta); 
             b.life -= delta;
 
             let hit = false;
@@ -538,7 +517,6 @@
                     hit = true;
                     score++;
                     document.getElementById('scoreVal').innerText = score;
-                    // respawn
                     t.position.set(
                         (Math.random() - 0.5) * MAP_SIZE,
                         20,
@@ -564,15 +542,12 @@
             camLook   = new THREE.Vector3(0, 0.2, -20);
         }
 
-        // Smooth camera follow
         const idealPos = camOffset.clone().applyMatrix4(jetPivot.matrixWorld);
         const idealLook = camLook.clone().applyMatrix4(jetPivot.matrixWorld);
         
-        // Lerp camera for weight sensation
         camera.position.lerp(idealPos, 0.2); 
         camera.lookAt(idealLook);
 
-        // Sun follows
         sun.position.x = jetPivot.position.x + 100;
         sun.position.z = jetPivot.position.z + 50;
         sun.target = jetPivot;
