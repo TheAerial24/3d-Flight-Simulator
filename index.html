@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Jet Flight Sim</title>
+    <title>3D Flight Demo</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #87CEEB; font-family: 'Courier New', Courier, monospace; touch-action: none; }
         #canvas-container { width: 100vw; height: 100vh; display: block; }
@@ -212,8 +212,8 @@
 </div>
 
 <div id="start-screen" onclick="startGame()">
-    <h1>Jet Fighter Simulator</h1>
-    <p>Click to Start Engine</p>
+    <h1>3D Flight Demo</h1>
+    <p>Click to Start</p>
     <p>Use <span class="key">W</span> to Throttle Up</p>
     <p>Hold <span class="key">A</span> for Afterburner</p>
     <p>Hold <span class="key">Space</span> for Air Brake</p>
@@ -222,7 +222,7 @@
     <button class="btn-start">START FLIGHT</button>
 </div>
 
-<div id="overlay-msg" onclick="resetPlane()">CRITICAL DAMAGE<br>Tap to Restart</div>
+<div id="overlay-msg" onclick="resetPlane()">Crash<br>Tap to Restart</div>
 
 <!-- Touch Controls -->
 <div id="throttle-container" class="touch-control">
