@@ -1179,27 +1179,7 @@ function animate() {
     updatePhysics(dt);
     updateHUD();
     updateCamera();
-   // --- SAFE GEAR ANIMATION ---
-    // 1. Check if 'plane' exists
-    // 2. Check if the gear exists inside the plane
-    // 3. CRITICAL: Check if 'sim' (physics) exists!
-    if (typeof plane !== 'undefined' && plane.userData.gearGroup && typeof sim !== 'undefined') {
-        
-        const gear = plane.userData.gearGroup;
-        
-        // Target: 0 = Down, 1.5 = Up (hidden)
-        const targetY = sim.gearDown ? 0 : 1.5;
-        
-        // Smoothly slide gear
-        gear.position.y += (targetY - gear.position.y) * 0.1;
-
-        // Visibility logic
-        if (sim.gearDown) {
-             gear.visible = true;
-        } else if (gear.position.y > 1.4) {
-             gear.visible = false;
-        }
-    }
+   
     renderer.render(scene, camera);
     // --- CRASH LOGIC ---
         // 1. Get the plane position (we need to find the plane object first)
