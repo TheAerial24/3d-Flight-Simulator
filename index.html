@@ -1179,8 +1179,12 @@ function animate() {
     updatePhysics(dt);
     updateHUD();
     updateCamera();
-    // --- GEAR ANIMATION (Put this inside animate) ---
-    if (typeof plane !== 'undefined' && plane.userData.gearGroup) {
+   // --- SAFE GEAR ANIMATION ---
+    // 1. Check if 'plane' exists
+    // 2. Check if the gear exists inside the plane
+    // 3. CRITICAL: Check if 'sim' (physics) exists!
+    if (typeof plane !== 'undefined' && plane.userData.gearGroup && typeof sim !== 'undefined') {
+        
         const gear = plane.userData.gearGroup;
         
         // Target: 0 = Down, 1.5 = Up (hidden)
