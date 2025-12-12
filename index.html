@@ -368,14 +368,6 @@ function init() {
     });
     document.addEventListener('keyup', e => keys[e.code] = false);
 
-    animate();
-}
-
-function toggleGear() {
-    sim.gearDown = !sim.gearDown;
-    }
-}
-
 // --- Inputs ---
 function updateInputs() {
     if (!gameActive) return;
