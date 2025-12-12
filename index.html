@@ -1153,7 +1153,7 @@ function createWorld() {
         trunk.castShadow = true;
         tree.add(trunk);
 
-        const c = new THREE.Color().setHSL(0.2 + Math.random() * 0.1, 0.9, 0.4);
+        const c = new THREE.Color().setHSL(0.15 + Math.random() * 0.2, 0.8, 0.3 + Math.random() * 0.4);
         const leafMat = new THREE.MeshLambertMaterial({ color: c });
         const leaves = new THREE.Mesh(leafGeo, leafMat);
         leaves.position.y = 3 + 9;
