@@ -620,7 +620,13 @@ function updatePhysics(dt) {
     sim.pos.add(sim.vel.clone().multiplyScalar(dt));
 
     // G-load: along body "up" axis
-    sim.gLoad = accel.dot(up) / PHYSICS.gravity + 1.0;
+    // Proper G-load (non-gravitational acceleration)
+const nonGravForce = totalForce.clone().sub(gravityForce);
+const properAccel = nonGravForce.divideScalar(PHYSICS.mass);
+sim.gLoad = THREE.MathUtils.clamp(
+    properAccel.dot(up) / PHYSICS.gravity,
+    -3, 9
+);
 
     const angAccel = new THREE.Vector3(
         torqueLocal.x / PHYSICS.momentInertia.x,
