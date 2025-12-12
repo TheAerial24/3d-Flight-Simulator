@@ -1150,14 +1150,14 @@ function createWorld() {
 
         const trunk = new THREE.Mesh(trunkGeo, trunkMat);
         trunk.position.y = 3;
-        trunk.castShadow = true;
+        trunk.castShadow = false;
         tree.add(trunk);
 
         const c = new THREE.Color().setHSL(0.15 + Math.random() * 0.2, 0.8, 0.3 + Math.random() * 0.4);
         const leafMat = new THREE.MeshLambertMaterial({ color: c });
         const leaves = new THREE.Mesh(leafGeo, leafMat);
         leaves.position.y = 3 + 9;
-        leaves.castShadow = true;
+        leaves.castShadow = false;
         tree.add(leaves);
 
         tree.position.set(x, 0.5, z);
