@@ -3,51 +3,76 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <title>3D Flight Demo (Procedural F-16-ish Jet)</title>
+  <title>3D Flight Demo</title>
   <style>
     body { margin: 0; overflow: hidden; background-color: #87CEEB; font-family: 'Courier New', Courier, monospace; touch-action: none; }
     #canvas-container { width: 100vw; height: 100vh; display: block; }
 
+    /* HUD Styles */
     #hud {
-      position: absolute; top: 20px; left: 20px;
-      color: #0f0; background: rgba(0,0,0,0.5);
-      padding: 15px; border-radius: 8px;
-      pointer-events: none; user-select: none;
-      border: 2px solid #0f0; box-shadow: 0 0 10px #0f0;
-      z-index: 10; min-width: 170px;
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      color: #0f0;
+      background: rgba(0, 0, 0, 0.5);
+      padding: 15px;
+      border-radius: 8px;
+      pointer-events: none;
+      user-select: none;
+      border: 2px solid #0f0;
+      box-shadow: 0 0 10px #0f0;
+      z-index: 10;
+      min-width: 150px;
     }
     .hud-row { margin-bottom: 5px; font-weight: bold; display: flex; justify-content: space-between; }
     .hud-label { margin-right: 10px; }
-    .warning { color: red; animation: blink 0.5s infinite; display: none; text-align: center; margin-top: 5px; }
+    .warning { color: red; animation: blink 0.5s infinite; display: none; text-align: center; margin-top: 5px;}
     @keyframes blink { 50% { opacity: 0; } }
 
+    /* Help Text */
     #controls-help {
-      position: absolute; top: 20px; right: 20px;
-      text-align: right; color: white;
-      background: rgba(0,0,0,0.5);
-      padding: 10px; border-radius: 5px;
-      font-family: sans-serif; font-size: 12px;
-      pointer-events: none; z-index: 10; display: none;
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      text-align: right;
+      color: white;
+      background: rgba(0, 0, 0, 0.5);
+      padding: 10px;
+      border-radius: 5px;
+      font-family: sans-serif;
+      font-size: 12px;
+      pointer-events: none;
+      z-index: 10;
+      display: none;
     }
     @media (min-width: 800px) { #controls-help { display: block; } }
 
+    /* Overlays */
     #overlay-msg, #start-screen {
-      position: absolute; top: 50%; left: 50%;
+      position: absolute;
+      top: 50%;
+      left: 50%;
       transform: translate(-50%, -50%);
-      color: white; font-family: sans-serif; font-weight: bold;
+      color: white;
+      font-family: sans-serif;
+      font-weight: bold;
       background: rgba(0,0,0,0.8);
-      padding: 26px; border-radius: 10px; text-align: center;
-      z-index: 20; cursor: pointer; border: 2px solid white;
+      padding: 30px;
+      border-radius: 10px;
+      text-align: center;
+      z-index: 20;
+      cursor: pointer;
+      border: 2px solid white;
       max-width: min(560px, calc(100vw - 40px));
     }
-    #overlay-msg { display: none; font-size: 22px; cursor: pointer; }
+    #overlay-msg { display: none; font-size: 24px; }
     #start-screen { display: flex; flex-direction: column; align-items: center; gap: 10px; }
 
     h1 { margin: 0 0 10px 0; font-size: 28px; text-transform: uppercase; color: #87CEEB; }
     p { margin: 5px 0; color: #ddd; }
     .key { background: #333; padding: 2px 6px; border-radius: 4px; border: 1px solid #666; font-family: monospace; }
     .btn-start {
-      margin-top: 16px;
+      margin-top: 20px;
       padding: 10px 30px;
       font-size: 20px;
       background: #2196F3;
@@ -58,33 +83,51 @@
     }
     .btn-start:hover { background: #1976D2; }
 
-    .touch-control { position: absolute; z-index: 15; user-select: none; touch-action: none; }
+    /* Throttle & Reset */
+    .touch-control {
+      position: absolute;
+      z-index: 15;
+      user-select: none;
+      touch-action: none;
+    }
 
     #throttle-container {
-      bottom: 40px; left: 40px;
-      width: 40px; height: 200px;
-      background: rgba(0,0,0,0.3);
-      border: 2px solid rgba(255,255,255,0.3);
+      bottom: 40px;
+      left: 40px;
+      width: 40px;
+      height: 200px;
+      background: rgba(0, 0, 0, 0.3);
+      border: 2px solid rgba(255, 255, 255, 0.3);
       border-radius: 20px;
     }
     #throttle-fill {
-      position: absolute; bottom: 0; left: 0;
-      width: 100%; height: 0%;
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: 0%;
       background: #ffcc00;
       border-radius: 18px;
       pointer-events: none;
     }
     #throttle-label {
-      position: absolute; top: -25px; left: 0; width: 100%;
-      text-align: center; color: white;
-      font-weight: bold; font-size: 12px;
+      position: absolute;
+      top: -25px;
+      left: 0;
+      width: 100%;
+      text-align: center;
+      color: white;
+      font-weight: bold;
+      font-size: 12px;
       text-shadow: 1px 1px 0 #000;
     }
 
     #reset-btn {
-      bottom: 20px; right: 20px;
-      width: 40px; height: 40px;
-      background: rgba(255,0,0,0.5);
+      bottom: 20px;
+      right: 20px;
+      width: 40px;
+      height: 40px;
+      background: rgba(255, 0, 0, 0.5);
       border: 2px solid white;
       border-radius: 8px;
       color: white;
@@ -96,10 +139,11 @@
     }
   </style>
 
-  <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+  <!-- Three.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js"></script>
 </head>
-
 <body>
+
 <div id="hud">
   <div class="hud-row"><span class="hud-label">SPD:</span> <span id="speed-display">0</span> kts</div>
   <div class="hud-row"><span class="hud-label">ALT:</span> <span id="alt-display">0</span> ft</div>
@@ -108,34 +152,34 @@
   <div class="hud-row"><span class="hud-label">VSI:</span> <span id="vsi-display">0</span> fpm</div>
   <div class="hud-row"><span class="hud-label">AOA:</span> <span id="aoa-display">0</span>°</div>
   <div class="hud-row"><span class="hud-label">G:</span> <span id="g-display">1.0</span></div>
-  <div class="hud-row"><span class="hud-label">GEAR:</span> <span id="gear-display">DWN</span></div>
+  <div class="hud-row"><span class="hud-label">GEAR:</span> <span id="gear-display">DN</span></div>
   <div id="brake-warning" class="warning">BRAKE</div>
   <div id="stall-warning" class="warning">STALL</div>
 </div>
 
 <div id="controls-help">
   <b>Controls:</b><br>
-  <span class="key">W</span> / <span class="key">S</span> - Throttle<br>
+  <span class="key">W</span> / <span class="key">S</span> - Throttle (Hold W)<br>
   <span class="key">A</span> - Afterburner (Hold)<br>
-  <span class="key">Space</span> - Speed Brake / Brakes<br>
+  <span class="key">Space</span> - Air Brake / Wheel Brakes<br>
   <span class="key">G</span> - Toggle Landing Gear<br>
   Arrows - Pitch/Roll & Steering<br>
   <span class="key">Q</span> / <span class="key">E</span> - Rudder<br>
   <i>Hold Down Arrow at 110kts to Fly</i>
 </div>
 
-<div id="start-screen">
-  <h1>3D FLIGHT DEMO</h1>
-  <p id="load-status" style="color:#ffd;">Ready ✅</p>
+<div id="start-screen" onclick="startGame()">
+  <h1>3D Flight Demo</h1>
+  <p>Click to Start</p>
   <p>Use <span class="key">W</span> to Throttle Up</p>
   <p>Hold <span class="key">A</span> for Afterburner</p>
-  <p>Hold <span class="key">Space</span> for Speed Brake / Brakes</p>
+  <p>Hold <span class="key">Space</span> for Air Brake / Brakes</p>
   <p>Use <span class="key">G</span> for Landing Gear</p>
   <p>Use <span class="key">Arrows</span> to Steer/Fly</p>
-  <button id="start-btn" class="btn-start">START FLIGHT</button>
+  <button class="btn-start">START FLIGHT</button>
 </div>
 
-<div id="overlay-msg" onclick="resetPlane()">CRASH<br>Click to Reset</div>
+<div id="overlay-msg" onclick="resetPlane()">CRASH<br>Tap to Restart</div>
 
 <div id="throttle-container" class="touch-control">
   <div id="throttle-label">THR</div>
@@ -154,27 +198,28 @@ let scene, camera, renderer, clock;
 let plane;
 let gameActive = false;
 
+// Physics & Sim State
 let PHYSICS = {};
 let sim = {};
+
+// Audio (optional file)
+let stallAudio = null;
+
+const VISUALS = {
+  colors: {
+    fuselage: 0xb0b7c0,
+    glass: 0x112244,
+    tire: 0x111111,
+    exhaust: 0x444444
+  }
+};
+
+// Inputs
 let input = { pitch: 0, roll: 0, yaw: 0, throttle: 0 };
 let keys = {};
 
 /* =========================
-   Model dims
-========================= */
-const MODEL_DIM = {
-  ready: false,
-  size: new THREE.Vector3(10, 3, 12),
-  bellyHeight: 0.55,
-  gearHeightFull: 1.70
-};
-function getClearanceMeters() {
-  const gearEffect = sim.gearPos;
-  return THREE.MathUtils.lerp(MODEL_DIM.bellyHeight, MODEL_DIM.gearHeightFull, gearEffect);
-}
-
-/* =========================
-   World & Terrain
+   World & Terrain (mountains + valley + triangle grid)
 ========================= */
 const WORLD = { size: 40000, segments: 140, runwayY: 0.2, groundY: -0.05 };
 const RUNWAY = { halfW: 80, halfL: 2100 };
@@ -193,62 +238,6 @@ const VALLEY = {
 const TERRAIN = { ready: false, size: WORLD.size, seg: WORLD.segments, geo: null, meshY: WORLD.groundY };
 
 function clamp01(v){ return v < 0 ? 0 : (v > 1 ? 1 : v); }
-
-function sampleTerrainMeshHeightAndNormal(x, z) {
-  const size = TERRAIN.size;
-  const seg = TERRAIN.seg;
-  const vertsPer = seg + 1;
-
-  const u = clamp01((x / size) + 0.5);
-  const v = clamp01((z / size) + 0.5);
-
-  const fx = u * seg;
-  const fz = v * seg;
-
-  const x0 = Math.floor(fx), z0 = Math.floor(fz);
-  const x1 = Math.min(x0 + 1, seg), z1 = Math.min(z0 + 1, seg);
-
-  const tx = fx - x0;
-  const tz = fz - z0;
-
-  const pos = TERRAIN.geo.attributes.position;
-  const nor = TERRAIN.geo.attributes.normal;
-
-  function idx(ix, iz){ return iz * vertsPer + ix; }
-
-  const i00 = idx(x0, z0), i10 = idx(x1, z0), i01 = idx(x0, z1), i11 = idx(x1, z1);
-
-  const h00 = pos.getZ(i00), h10 = pos.getZ(i10), h01 = pos.getZ(i01), h11 = pos.getZ(i11);
-  const h0 = h00 + (h10 - h00) * tx;
-  const h1 = h01 + (h11 - h01) * tx;
-  const hLocal = h0 + (h1 - h0) * tz;
-
-  const n00 = new THREE.Vector3(nor.getX(i00), nor.getY(i00), nor.getZ(i00));
-  const n10 = new THREE.Vector3(nor.getX(i10), nor.getY(i10), nor.getZ(i10));
-  const n01 = new THREE.Vector3(nor.getX(i01), nor.getY(i01), nor.getZ(i01));
-  const n11 = new THREE.Vector3(nor.getX(i11), nor.getY(i11), nor.getZ(i11));
-
-  const n0 = n00.lerp(n10, tx);
-  const n1 = n01.lerp(n11, tx);
-  const nLocal = n0.lerp(n1, tz).normalize();
-
-  const nWorld = nLocal.applyEuler(new THREE.Euler(-Math.PI/2, 0, 0)).normalize();
-  const worldH = TERRAIN.meshY + hLocal;
-  return { h: worldH, n: nWorld };
-}
-
-/* =========================
-   Hills
-========================= */
-const HILLS = [];
-function mulberry32(seed) {
-  return function() {
-    let t = seed += 0x6D2B79F5;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
 function smoothstep(edge0, edge1, x) {
   const t = THREE.MathUtils.clamp((x - edge0) / (edge1 - edge0), 0, 1);
   return t * t * (3 - 2 * t);
@@ -271,6 +260,17 @@ function valleyBlend(x, z) {
   const bRect = rectBlend(ax, az, VALLEY.halfW, VALLEY.halfL, VALLEY.fadeW, VALLEY.fadeL);
   const bCirc = circleBlend(x, z, SPAWN.x, SPAWN.z, SPAWN.flatRadius, SPAWN.fade);
   return Math.min(bRect, bCirc);
+}
+
+/* Hills features */
+const HILLS = [];
+function mulberry32(seed) {
+  return function() {
+    let t = seed += 0x6D2B79F5;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
 function initHillFeatures() {
   HILLS.length = 0;
@@ -324,66 +324,55 @@ function getTerrainMeshWorldHeight_Analytic(x, z) {
   if (isOnRunwayXZ(x, z)) return WORLD.runwayY - VALLEY.floorDrop;
   return terrainWorldHeightOffRunway_Analytic(x, z);
 }
+
+function sampleTerrainMeshHeightAndNormal(x, z) {
+  const size = TERRAIN.size;
+  const seg = TERRAIN.seg;
+  const vertsPer = seg + 1;
+
+  const u = clamp01((x / size) + 0.5);
+  const v = clamp01((z / size) + 0.5);
+
+  const fx = u * seg;
+  const fz = v * seg;
+
+  const x0 = Math.floor(fx), z0 = Math.floor(fz);
+  const x1 = Math.min(x0 + 1, seg), z1 = Math.min(z0 + 1, seg);
+
+  const tx = fx - x0;
+  const tz = fz - z0;
+
+  const pos = TERRAIN.geo.attributes.position;
+  const nor = TERRAIN.geo.attributes.normal;
+
+  function idx(ix, iz){ return iz * vertsPer + ix; }
+
+  const i00 = idx(x0, z0), i10 = idx(x1, z0), i01 = idx(x0, z1), i11 = idx(x1, z1);
+
+  const h00 = pos.getZ(i00), h10 = pos.getZ(i10), h01 = pos.getZ(i01), h11 = pos.getZ(i11);
+  const h0 = h00 + (h10 - h00) * tx;
+  const h1 = h01 + (h11 - h01) * tx;
+  const hLocal = h0 + (h1 - h0) * tz;
+
+  const n00 = new THREE.Vector3(nor.getX(i00), nor.getY(i00), nor.getZ(i00));
+  const n10 = new THREE.Vector3(nor.getX(i10), nor.getY(i10), nor.getZ(i10));
+  const n01 = new THREE.Vector3(nor.getX(i01), nor.getY(i01), nor.getZ(i01));
+  const n11 = new THREE.Vector3(nor.getX(i11), nor.getY(i11), nor.getZ(i11));
+
+  const n0 = n00.lerp(n10, tx);
+  const n1 = n01.lerp(n11, tx);
+  const nLocal = n0.lerp(n1, tz).normalize();
+
+  // plane mesh rotated -PI/2 about X, so convert local normal to world-ish
+  const nWorld = nLocal.applyEuler(new THREE.Euler(-Math.PI/2, 0, 0)).normalize();
+  const worldH = TERRAIN.meshY + hLocal;
+  return { h: worldH, n: nWorld };
+}
+
 function getGroundHeight(x, z) {
   if (isOnRunwayXZ(x, z)) return WORLD.runwayY;
   if (TERRAIN.ready) return sampleTerrainMeshHeightAndNormal(x, z).h;
   return terrainWorldHeightOffRunway_Analytic(x, z);
-}
-
-/* =========================
-   Anim helpers
-========================= */
-function easeInOutCubic(t) { return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t + 2, 3)/2; }
-function moveTowards(current, target, maxDelta) {
-  if (Math.abs(target - current) <= maxDelta) return target;
-  return current + Math.sign(target - current) * maxDelta;
-}
-
-/* =========================
-   Gear Animation
-========================= */
-function updateGearAnimation(dt) {
-  if (!plane || !plane.userData.gear) return;
-
-  const maxStep = dt / Math.max(0.001, sim.gearSpeed);
-  sim.gearPos = moveTowards(sim.gearPos, sim.gearTarget, maxStep);
-
-  const t = easeInOutCubic(sim.gearPos);
-  const gearVisible = sim.gearPos >= 0.03; // stays visible until nearly fully tucked
-
-  for (const part of plane.userData.gear.parts) {
-    part.mesh.position.set(
-      THREE.MathUtils.lerp(part.upPos.x, part.downPos.x, t),
-      THREE.MathUtils.lerp(part.upPos.y, part.downPos.y, t),
-      THREE.MathUtils.lerp(part.upPos.z, part.downPos.z, t)
-    );
-    part.mesh.rotation.set(
-      THREE.MathUtils.lerp(part.upRot.x, part.downRot.x, t),
-      THREE.MathUtils.lerp(part.upRot.y, part.downRot.y, t),
-      THREE.MathUtils.lerp(part.upRot.z, part.downRot.z, t)
-    );
-    part.mesh.visible = gearVisible;
-  }
-}
-
-/* =========================
-   F-16 STYLE SPEEDBRAKES
-   - two side panels near nozzle
-========================= */
-function updateSpeedbrakes(dt) {
-  if (!plane || !plane.userData.speedBrakes) return;
-
-  if (sim.brakePos === undefined) sim.brakePos = 0;
-  const target = sim.airBrake ? 1 : 0;
-  sim.brakePos = moveTowards(sim.brakePos, target, dt * 3.0);
-  const t = easeInOutCubic(sim.brakePos);
-
-  const maxDeg = sim.onGround ? 43 : 60;
-  const maxAngle = THREE.MathUtils.degToRad(maxDeg);
-
-  for (const b of plane.userData.speedBrakes) {
-    b.pivot.rotation.set(0, b.sign * maxAngle * t, 0);
-  }
 }
 
 /* =========================
@@ -393,6 +382,13 @@ function startGame() {
   document.getElementById('start-screen').style.display = 'none';
   gameActive = true;
   resetPlane();
+
+  // prime audio after user interaction
+  if (!stallAudio) {
+    stallAudio = new Audio("stall_warning.mp3");
+    stallAudio.loop = true;
+    stallAudio.volume = 0.8;
+  }
 }
 
 function init() {
@@ -401,15 +397,22 @@ function init() {
     gravity: 9.81,
     airDensity: 1.225,
     wingArea: 24.0,
+
     dragCoeffZero: 0.020,
     inducedDragFactor: 0.06,
     liftSlope: 7.5,
     maxLiftCoeff: 1.6,
     stallAngle: 0.45,
     wingIncidence: 0.02,
+
     maxThrust: 70000,
+
     momentInertia: new THREE.Vector3(12000, 15000, 12000),
+    damping: new THREE.Vector3(2.5, 1.0, 5.0),
+
+    wheelBrakes: 15000,
     wheelFriction: 0.09,
+    wheelSideFriction: 15000,
     suspensionStiffness: 65000,
     suspensionDamping: 4000
   };
@@ -425,16 +428,11 @@ function init() {
     onGround: true,
 
     gearDown: true,
-    gearPos: 1.0,
-    gearTarget: 1.0,
-    gearSpeed: 1.8,
-
     afterburner: false,
     airBrake: false,
 
     alpha: 0,
-    gLoad: 1.0,
-    brakePos: 0
+    gLoad: 1.0
   };
 
   initHillFeatures();
@@ -458,7 +456,7 @@ function init() {
 
   camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 30000);
 
-  // Sky
+  // Sky dome
   const skyGeo = new THREE.SphereGeometry(12000, 32, 15);
   const skyMat = new THREE.ShaderMaterial({
     side: THREE.BackSide,
@@ -499,8 +497,8 @@ function init() {
   const sun = new THREE.DirectionalLight(0xffffff, 1.15);
   sun.position.set(300, 600, 200);
   sun.castShadow = true;
-  sun.shadow.mapSize.width = 2048;
-  sun.shadow.mapSize.height = 2048;
+  sun.shadow.mapSize.width = 4096;
+  sun.shadow.mapSize.height = 4096;
   sun.shadow.camera.near = 10;
   sun.shadow.camera.far = 6000;
   sun.shadow.camera.left = -1200;
@@ -510,380 +508,28 @@ function init() {
   scene.add(sun);
 
   createWorld();
-
-  plane = createAircraftContainer();
+  plane = createJetMesh();
   scene.add(plane);
-
-  buildJetModel(); // procedural jet (no loading)
-
-  document.getElementById("start-btn").addEventListener("click", startGame);
-  document.getElementById("start-screen").addEventListener("click", (e) => {
-    // don't double-trigger when clicking the button
-    if (e.target && e.target.id === "start-btn") return;
-    startGame();
-  });
 
   window.addEventListener('resize', onResize);
   document.addEventListener('keydown', e => {
     keys[e.code] = true;
-    if (gameActive && e.code === 'KeyG') toggleGear();
+    if (e.code === 'KeyG') toggleGear();
   });
   document.addEventListener('keyup', e => keys[e.code] = false);
 
-  updateGearAnimation(0);
   animate();
 }
 
 function toggleGear() {
-  sim.gearTarget = (sim.gearTarget > 0.5) ? 0.0 : 1.0;
-  sim.gearDown = sim.gearTarget > 0.5;
-}
-
-/* =========================
-   Aircraft container + effects
-========================= */
-function createAircraftContainer() {
-  const root = new THREE.Group();
-
-  const modelGroup = new THREE.Group();
-  root.add(modelGroup);
-  root.userData.modelGroup = modelGroup;
-
-  // landing gear visuals
-  const gearGroup = new THREE.Group();
-  root.add(gearGroup);
-
-  const tireGeo = new THREE.CylinderGeometry(0.35, 0.35, 0.25, 16);
-  tireGeo.rotateZ(Math.PI/2);
-  const tireMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9, metalness: 0.0 });
-
-  const noseWheel = new THREE.Mesh(tireGeo, tireMat); noseWheel.castShadow = true; gearGroup.add(noseWheel);
-  const mainWheelL = new THREE.Mesh(tireGeo, tireMat); mainWheelL.castShadow = true; gearGroup.add(mainWheelL);
-  const mainWheelR = new THREE.Mesh(tireGeo, tireMat); mainWheelR.castShadow = true; gearGroup.add(mainWheelR);
-
-  const downRot = new THREE.Euler(0,0,0);
-  const upRot   = new THREE.Euler(Math.PI/2, 0, 0);
-
-  root.userData.gear = {
-    parts: [
-      { mesh: noseWheel,  downPos: new THREE.Vector3(), upPos: new THREE.Vector3(), downRot: downRot, upRot: upRot },
-      { mesh: mainWheelL, downPos: new THREE.Vector3(), upPos: new THREE.Vector3(), downRot: downRot, upRot: upRot },
-      { mesh: mainWheelR, downPos: new THREE.Vector3(), upPos: new THREE.Vector3(), downRot: downRot, upRot: upRot }
-    ]
-  };
-
-  // Afterburner visuals (positioned later from model bbox)
-  const outerGeo = new THREE.ConeGeometry(0.50, 3.6, 16, 1, true);
-  outerGeo.translate(0, 1.8, 0); outerGeo.rotateX(Math.PI/2);
-  const flameOuter = new THREE.Mesh(outerGeo, new THREE.MeshBasicMaterial({
-    color: 0xffaa33, transparent: true, opacity: 0.55,
-    blending: THREE.AdditiveBlending, depthWrite: false
-  }));
-  flameOuter.visible = false; root.add(flameOuter);
-
-  const innerGeo = new THREE.ConeGeometry(0.30, 2.7, 16, 1, true);
-  innerGeo.translate(0, 1.35, 0); innerGeo.rotateX(Math.PI/2);
-  const flameInner = new THREE.Mesh(innerGeo, new THREE.MeshBasicMaterial({
-    color: 0x66c9ff, transparent: true, opacity: 0.8,
-    blending: THREE.AdditiveBlending, depthWrite: false
-  }));
-  flameInner.visible = false; root.add(flameInner);
-  root.userData.afterburners = [flameOuter, flameInner];
-
-  // Vapor
-  const vaporMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.0, depthWrite: false });
-  const vaporGeo = new THREE.PlaneGeometry(2, 0.4);
-  const vaporL = new THREE.Mesh(vaporGeo, vaporMat); vaporL.rotation.y = Math.PI/2; root.add(vaporL);
-  const vaporR = new THREE.Mesh(vaporGeo, vaporMat.clone()); vaporR.rotation.y = -Math.PI/2; root.add(vaporR);
-  root.userData.vaporL = vaporL;
-  root.userData.vaporR = vaporR;
-
-  // Dust
-  const dustGeo = new THREE.PlaneGeometry(6, 3);
-  dustGeo.rotateX(-Math.PI/2);
-  const dust = new THREE.Mesh(dustGeo, new THREE.MeshBasicMaterial({ color: 0xaaaaaa, transparent: true, opacity: 0.0, depthWrite: false }));
-  root.add(dust);
-  root.userData.dust = dust;
-
-  return root;
-}
-
-/* =========================
-   Clean jet model
-   - F-16-ish trapezoid wings
-   - straight vertical stab placed aft
-   - F-16-style side speedbrakes near nozzle
-   - scaled bigger
-   - model dropped slightly so gear tucks into fuselage before hiding
-========================= */
-const TARGET_LENGTH_M = 26.0;
-
-function makeWingGeometryF16(span, rootChord, tipChord, sweepAft, thickness) {
-  const shape = new THREE.Shape();
-  // X = span, Y = aft direction (chord)
-  shape.moveTo(0, 0);
-  shape.lineTo(span, sweepAft);
-  shape.lineTo(span, sweepAft + tipChord);
-  shape.lineTo(0, rootChord);
-  shape.lineTo(0, 0);
-
-  const geo = new THREE.ExtrudeGeometry(shape, {
-    depth: thickness,
-    bevelEnabled: false,
-    curveSegments: 1,
-    steps: 1
-  });
-
-  // center thickness
-  geo.translate(0, 0, -thickness / 2);
-  // make thickness vertical (Y)
-  geo.rotateX(-Math.PI / 2);
-
-  geo.computeVertexNormals();
-  return geo;
-}
-
-function buildJetModel() {
-  const mg = plane.userData.modelGroup;
-  mg.clear();
-  plane.userData.speedBrakes = null;
-  plane.userData.modelMetrics = null;
-
-  const bodyMat   = new THREE.MeshStandardMaterial({ color: 0x9aa0a6, roughness: 0.65, metalness: 0.25 });
-  const darkMat   = new THREE.MeshStandardMaterial({ color: 0x2b2f36, roughness: 0.85, metalness: 0.05 });
-  const canopyMat = new THREE.MeshStandardMaterial({ color: 0x88c7ff, roughness: 0.12, metalness: 0.0, transparent: true, opacity: 0.35 });
-  const sbMat     = new THREE.MeshStandardMaterial({ color: 0x7d848b, roughness: 0.75, metalness: 0.10 });
-
-  const g = new THREE.Group();
-
-  // Forward = -Z
-  const fuseLen = 20.0;
-  const y0 = 1.15;
-
-  // Fuselage
-  const fuselage = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.78, 1.08, fuseLen, 30, 1, false),
-    bodyMat
-  );
-  fuselage.rotation.x = Math.PI / 2;
-  fuselage.position.set(0, y0, 0);
-  fuselage.castShadow = fuselage.receiveShadow = true;
-  g.add(fuselage);
-
-  // Nose
-  const nose = new THREE.Mesh(
-    new THREE.ConeGeometry(0.78, 3.8, 30),
-    bodyMat
-  );
-  nose.rotation.x = -Math.PI / 2;
-  nose.position.set(0, y0, -(fuseLen * 0.5) - 1.7);
-  nose.castShadow = nose.receiveShadow = true;
-  g.add(nose);
-
-  // Canopy
-  const canopy = new THREE.Mesh(new THREE.SphereGeometry(0.95, 26, 18), canopyMat);
-  canopy.scale.set(1.25, 0.72, 1.65);
-  canopy.position.set(0, y0 + 0.72, -(fuseLen * 0.5) + 5.2);
-  g.add(canopy);
-
-  // Chin intake-ish block (kept off the wings)
-  const chin = new THREE.Mesh(new THREE.BoxGeometry(1.35, 0.60, 2.55), darkMat);
-  chin.position.set(0, y0 - 0.85, -2.9);
-  g.add(chin);
-
-  // Exhaust
-  const exhaust = new THREE.Mesh(new THREE.CylinderGeometry(0.80, 0.92, 2.8, 22), darkMat);
-  exhaust.rotation.x = Math.PI / 2;
-  exhaust.position.set(0, y0 - 0.05, (fuseLen * 0.5) + 1.30);
-  g.add(exhaust);
-
-  // Wings (F-16-ish trapezoid, thick)
-  const wingGeo = makeWingGeometryF16(
-    4.8,   // half-span
-    4.5,   // root chord
-    1.9,   // tip chord
-    1.65,  // sweep aft
-    0.18   // thickness
-  );
-
-  const wingL = new THREE.Mesh(wingGeo, bodyMat);
-  wingL.castShadow = wingL.receiveShadow = true;
-  wingL.position.set(0.55, y0 - 0.08, -0.55);
-  g.add(wingL);
-
-  const wingR = new THREE.Mesh(wingGeo, bodyMat);
-  wingR.castShadow = wingR.receiveShadow = true;
-  wingR.scale.x = -1;
-  wingR.position.set(-0.55, y0 - 0.08, -0.55);
-  g.add(wingR);
-
-  // Tailplanes (horizontal stabilizers) - correct orientation, mirrored only on X
-  const tailGeo = makeWingGeometryF16(
-    2.25,
-    2.2,
-    1.2,
-    0.55,
-    0.16
-  );
-  const tailL = new THREE.Mesh(tailGeo, bodyMat);
-  tailL.castShadow = tailL.receiveShadow = true;
-  tailL.position.set(0.52, y0 + 0.10, (fuseLen * 0.5) - 4.7);
-  g.add(tailL);
-
-  const tailR = new THREE.Mesh(tailGeo, bodyMat);
-  tailR.castShadow = tailR.receiveShadow = true;
-  tailR.scale.x = -1;
-  tailR.position.set(-0.52, y0 + 0.10, (fuseLen * 0.5) - 4.7);
-  g.add(tailR);
-
-  // Vertical stabilizer: straight, aft, not rotated backwards
-  const fin = new THREE.Mesh(new THREE.BoxGeometry(0.22, 3.3, 3.0), bodyMat);
-  fin.castShadow = fin.receiveShadow = true;
-  fin.position.set(0, y0 + 1.75, (fuseLen * 0.5) - 5.6);
-  g.add(fin);
-
-  // =============================
-  // F-16 STYLE SPEEDBRAKES:
-  // Two side panels near nozzle that swing outward/back.
-  // =============================
-  const sbPanelGeo = new THREE.BoxGeometry(0.07, 1.65, 1.15);
-
-  const sbZ = (fuseLen * 0.5) - 1.55;
-  const sbY = y0 + 0.25;
-  const sbX = 1.05;
-
-  const sbPivotL = new THREE.Group();
-  sbPivotL.position.set(+sbX, sbY, sbZ);
-  const sbPanelL = new THREE.Mesh(sbPanelGeo, sbMat);
-  sbPanelL.position.set(+0.22, 0, 0);
-  sbPanelL.castShadow = sbPanelL.receiveShadow = true;
-  sbPivotL.add(sbPanelL);
-  g.add(sbPivotL);
-
-  const sbPivotR = new THREE.Group();
-  sbPivotR.position.set(-sbX, sbY, sbZ);
-  const sbPanelR = new THREE.Mesh(sbPanelGeo, sbMat);
-  sbPanelR.position.set(-0.22, 0, 0);
-  sbPanelR.castShadow = sbPanelR.receiveShadow = true;
-  sbPivotR.add(sbPanelR);
-  g.add(sbPivotR);
-
-  plane.userData.speedBrakes = [
-    { pivot: sbPivotL, sign: +1 },
-    { pivot: sbPivotR, sign: -1 }
-  ];
-
-  // -----------------------------
-  // Normalize: scale, center, sit on ground + drop a bit (so gear tucks in)
-  // -----------------------------
-  g.updateMatrixWorld(true);
-  let box = new THREE.Box3().setFromObject(g);
-
-  const size = new THREE.Vector3();
-  box.getSize(size);
-
-  const currentLen = Math.max(0.0001, size.z);
-  const s = TARGET_LENGTH_M / currentLen;
-  g.scale.setScalar(s);
-
-  g.updateMatrixWorld(true);
-  box = new THREE.Box3().setFromObject(g);
-
-  const center = new THREE.Vector3();
-  box.getCenter(center);
-  g.position.sub(center);
-
-  g.updateMatrixWorld(true);
-  box = new THREE.Box3().setFromObject(g);
-
-  const height = box.max.y - box.min.y;
-  const extraDrop = height * 0.10; // drop 10% so gear can retract "into" fuselage before hiding
-  g.position.y -= (box.min.y + extraDrop);
-
-  mg.add(g);
-
-  // Update MODEL_DIM and cache tail Z for afterburner alignment
-  plane.updateMatrixWorld(true);
-  const bbox = new THREE.Box3().setFromObject(mg);
-  const finalSize = new THREE.Vector3();
-  bbox.getSize(finalSize);
-
-  MODEL_DIM.ready = true;
-  MODEL_DIM.size.copy(finalSize);
-  MODEL_DIM.bellyHeight    = Math.max(0.55, finalSize.y * 0.28);
-  MODEL_DIM.gearHeightFull = Math.max(1.20, finalSize.y * 0.65);
-
-  plane.userData.modelMetrics = {
-    tailZ: bbox.max.z,
-    L: finalSize.z,
-    W: finalSize.x,
-    H: finalSize.y
-  };
-
-  rebuildAircraftAnchors();
-  updateGearAnimation(0);
-  resetPlane();
-}
-
-function rebuildAircraftAnchors() {
-  if (!plane || !plane.userData.gear) return;
-
-  const size = MODEL_DIM.size;
-  const L = size.z, W = size.x, H = size.y;
-
-  const gearY = -H * 0.62;
-
-  // Down positions (touch runway)
-  const noseDownPos  = new THREE.Vector3(0, gearY, -L * 0.44);
-  const mainLDownPos = new THREE.Vector3( W * 0.20, gearY,  L * 0.10);
-  const mainRDownPos = new THREE.Vector3(-W * 0.20, gearY,  L * 0.10);
-
-  // Up positions (inside fuselage)
-  const noseUpPos  = new THREE.Vector3(0,  H * 0.10, -L * 0.30);
-  const mainLUpPos = new THREE.Vector3( W * 0.08, H * 0.07,  L * 0.20);
-  const mainRUpPos = new THREE.Vector3(-W * 0.08, H * 0.07,  L * 0.20);
-
-  const parts = plane.userData.gear.parts;
-  parts[0].downPos.copy(noseDownPos);  parts[0].upPos.copy(noseUpPos);
-  parts[1].downPos.copy(mainLDownPos); parts[1].upPos.copy(mainLUpPos);
-  parts[2].downPos.copy(mainRDownPos); parts[2].upPos.copy(mainRUpPos);
-
-  const noseWheel = parts[0].mesh;
-  const mainWheelL = parts[1].mesh;
-  const mainWheelR = parts[2].mesh;
-
-  const noseScale = Math.max(1.10, W * 0.050);
-  const mainScale = Math.max(1.30, W * 0.060);
-  noseWheel.scale.set(noseScale, noseScale, noseScale);
-  mainWheelL.scale.set(mainScale, mainScale, mainScale);
-  mainWheelR.scale.set(mainScale, mainScale, mainScale);
-
-  // Afterburner flames align to model tail bbox
-  if (plane.userData.afterburners && plane.userData.modelMetrics) {
-    const tailZ = plane.userData.modelMetrics.tailZ;
-    plane.userData.afterburners[0].position.set(0, 0, tailZ + 0.40);
-    plane.userData.afterburners[1].position.set(0, 0, tailZ + 0.55);
-
-    const abS = Math.max(1.35, W * 0.070);
-    plane.userData.afterburners[0].scale.set(abS, abS, abS);
-    plane.userData.afterburners[1].scale.set(abS * 0.8, abS * 0.8, abS * 0.8);
-  }
-
-  if (plane.userData.vaporL && plane.userData.vaporR) {
-    plane.userData.vaporL.position.set( W * 0.52, 0, -L * 0.02);
-    plane.userData.vaporR.position.set(-W * 0.52, 0, -L * 0.02);
-    plane.userData.vaporL.scale.setScalar(Math.max(0.9, W * 0.12));
-    plane.userData.vaporR.scale.setScalar(Math.max(0.9, W * 0.12));
-  }
-
-  if (plane.userData.dust) {
-    plane.userData.dust.position.set(0, gearY + 0.02, L * 0.10);
-    plane.userData.dust.scale.set(Math.max(1.2, W * 0.18), 1, Math.max(1.2, L * 0.06));
+  sim.gearDown = !sim.gearDown;
+  if (plane && plane.userData.gearGroup) {
+    plane.userData.gearGroup.visible = sim.gearDown;
   }
 }
 
 /* =========================
-   Inputs / Physics / HUD / Camera / Reset
+   Inputs
 ========================= */
 function updateInputs() {
   if (!gameActive) return;
@@ -914,12 +560,13 @@ function updateInputs() {
   input.yaw   = THREE.MathUtils.clamp(kYaw, -1, 1);
 }
 
+/* =========================
+   Physics
+========================= */
 function updatePhysics(dt) {
   if (sim.crashed) return;
 
   updateInputs();
-  updateGearAnimation(dt);
-  updateSpeedbrakes(dt);
 
   const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(sim.quat);
   const up      = new THREE.Vector3(0, 1, 0).applyQuaternion(sim.quat);
@@ -946,16 +593,21 @@ function updatePhysics(dt) {
   const cd = PHYSICS.dragCoeffZero + (PHYSICS.inducedDragFactor * cl * cl);
   let dragMag = q * PHYSICS.wingArea * cd;
   if (sim.airBrake) dragMag *= 15.0;
-  const dragForce = (speed > 0.1) ? sim.vel.clone().normalize().negate().multiplyScalar(dragMag) : new THREE.Vector3();
+
+  const dragForce = (speed > 0.1)
+    ? sim.vel.clone().normalize().negate().multiplyScalar(dragMag)
+    : new THREE.Vector3();
 
   let currentThrottle = input.throttle;
   let abBoost = 1.0;
+
   if (sim.airBrake) currentThrottle = 0;
   else if (sim.afterburner) { currentThrottle = 1.1; abBoost = 2.0; }
 
   const thrustFactor = Math.max(0.4, 1 - (speed / 350));
   const thrustForce = forward.clone().multiplyScalar(currentThrottle * PHYSICS.maxThrust * thrustFactor * abBoost);
 
+  // Visuals: afterburner flames
   if (plane && plane.userData.afterburners) {
     const speedFactor = THREE.MathUtils.clamp(speed / 250, 0, 1.2);
     plane.userData.afterburners.forEach((ab, idx) => {
@@ -964,9 +616,23 @@ function updatePhysics(dt) {
       const flicker = 0.8 + Math.random() * 0.4;
       const base = (idx === 0) ? 1.0 : 0.6;
       const s = base * (1.0 + 0.6 * speedFactor) * flicker;
-      if (idx === 0) ab.scale.set(s, s, s * 1.6);
-      else ab.scale.set(s * 0.6, s * 0.6, s * 1.2);
+      if (idx === 0) ab.scale.set(s, s, s * 1.8);
+      else ab.scale.set(s * 0.6, s * 0.6, s * 1.4);
     });
+  }
+
+  // Visuals: airbrake panels
+  if (plane) {
+    const brakeSpeed = 5.0 * dt;
+    const targetRot = sim.airBrake ? 0.9 : 0;
+    if (plane.userData.airBrakeL) {
+      const currentL = plane.userData.airBrakeL.rotation.y;
+      plane.userData.airBrakeL.rotation.y += (targetRot - currentL) * brakeSpeed;
+    }
+    if (plane.userData.airBrakeR) {
+      const currentR = plane.userData.airBrakeR.rotation.y;
+      plane.userData.airBrakeR.rotation.y += (-targetRot - currentR) * brakeSpeed;
+    }
   }
 
   const gravityForce = new THREE.Vector3(0, -PHYSICS.gravity * PHYSICS.mass, 0);
@@ -977,51 +643,81 @@ function updatePhysics(dt) {
     .add(thrustForce)
     .add(gravityForce);
 
+  // Ground handling (runway only). Off-runway: crash on any contact.
+  const gearHeight  = 1.35;
+  const bellyHeight = 0.5;
+
   const groundH = getGroundHeight(sim.pos.x, sim.pos.z);
+  const onRunway = isOnRunwayXZ(sim.pos.x, sim.pos.z);
+  const wasOnGround = sim.onGround;
+
   let suspensionTorque = 0;
 
-  const gearEffect = sim.gearPos;
-  const clearance = getClearanceMeters();
-
-  if (gearEffect > 0.2) {
-    const contactY = groundH + clearance;
-    sim.onGround = (sim.pos.y <= contactY);
-
-    if (sim.onGround) {
-      if (sim.pos.y < contactY) sim.pos.y = contactY;
-
-      if (sim.vel.y < 0) {
-        sim.vel.y = 0;
-        if (totalForce.y < 0) totalForce.y = 0;
-      }
-
-      const normalForce = Math.max(0, PHYSICS.mass * PHYSICS.gravity - liftForce.y);
-      const frictionMag = normalForce * PHYSICS.wheelFriction;
-
-      if (speed > 0.1) totalForce.add(sim.vel.clone().normalize().negate().multiplyScalar(frictionMag));
-      if (sim.airBrake && speed > 0.5) totalForce.add(sim.vel.clone().normalize().negate().multiplyScalar(normalForce * 0.6));
-
-      const sideVel = sim.vel.dot(right);
-      totalForce.add(right.clone().multiplyScalar(-sideVel * 2.0 * PHYSICS.mass * dt));
-
-      if (speed > 1) sim.angularVel.y += input.yaw * 0.8 * dt;
-
-      const euler = new THREE.Euler().setFromQuaternion(sim.quat, 'YXZ');
-      if (euler.x < 0) {
-        suspensionTorque += -euler.x * PHYSICS.suspensionStiffness;
-        suspensionTorque -= sim.angularVel.x * PHYSICS.suspensionDamping;
-      } else if (euler.x > 0.3) {
-        suspensionTorque += -(euler.x - 0.3) * PHYSICS.suspensionStiffness;
-      }
-    }
-  } else {
-    sim.onGround = false;
-    const bellyClear = MODEL_DIM.bellyHeight;
-    if (sim.pos.y < groundH + bellyClear) {
+  if (!onRunway) {
+    const contactOffset = sim.gearDown ? gearHeight : bellyHeight;
+    if (sim.pos.y <= groundH + contactOffset) {
       sim.crashed = true;
       document.getElementById('overlay-msg').innerHTML = "CRASH<br>Click to Reset";
       document.getElementById('overlay-msg').style.display = 'block';
       return;
+    }
+    sim.onGround = false;
+  } else {
+    if (sim.gearDown) {
+      const contactY = groundH + gearHeight;
+      sim.onGround = (sim.pos.y <= contactY);
+
+      if (sim.onGround) {
+        if (sim.pos.y < contactY) sim.pos.y = contactY;
+
+        // touchdown dust
+        if (!wasOnGround && plane && plane.userData.dust) {
+          const touchdownSpeed = sim.vel.length();
+          plane.userData.dust.material.opacity = THREE.MathUtils.clamp(touchdownSpeed / 60, 0.2, 0.8);
+
+          const trackDirLocal = sim.vel.clone();
+          trackDirLocal.y = 0;
+          trackDirLocal.applyQuaternion(sim.quat.clone().invert());
+          if (trackDirLocal.lengthSq() > 0.1) {
+            trackDirLocal.normalize();
+            const yaw = Math.atan2(trackDirLocal.x, trackDirLocal.z);
+            plane.userData.dust.rotation.y = yaw;
+          }
+        }
+
+        if (sim.vel.y < 0) {
+          sim.vel.y = 0;
+          if (totalForce.y < 0) totalForce.y = 0;
+        }
+
+        const normalForce = Math.max(0, PHYSICS.mass * PHYSICS.gravity - liftForce.y);
+        const frictionMag = normalForce * PHYSICS.wheelFriction;
+
+        if (speed > 0.1) totalForce.add(sim.vel.clone().normalize().negate().multiplyScalar(frictionMag));
+        if (sim.airBrake && speed > 0.5) totalForce.add(sim.vel.clone().normalize().negate().multiplyScalar(normalForce * 0.6));
+
+        const sideVel = sim.vel.dot(right);
+        totalForce.add(right.clone().multiplyScalar(-sideVel * 2.0 * PHYSICS.mass * dt));
+
+        if (speed > 1) sim.angularVel.y += input.yaw * 0.8 * dt;
+
+        const euler = new THREE.Euler().setFromQuaternion(sim.quat, 'YXZ');
+        if (euler.x < 0) {
+          suspensionTorque += -euler.x * PHYSICS.suspensionStiffness;
+          suspensionTorque -= sim.angularVel.x * PHYSICS.suspensionDamping;
+        } else if (euler.x > 0.3) {
+          suspensionTorque += -(euler.x - 0.3) * PHYSICS.suspensionStiffness;
+        }
+      }
+    } else {
+      sim.onGround = false;
+      const bellyContactY = groundH + bellyHeight;
+      if (sim.pos.y < bellyContactY) {
+        sim.crashed = true;
+        document.getElementById('overlay-msg').innerHTML = "CRASH<br>Click to Reset";
+        document.getElementById('overlay-msg').style.display = 'block';
+        return;
+      }
     }
   }
 
@@ -1042,18 +738,22 @@ function updatePhysics(dt) {
 
   const torqueLocal = new THREE.Vector3(pitchTorque, controlYaw, controlRoll);
 
+  // G-load
   const accelNoDt = totalForce.clone().divideScalar(PHYSICS.mass);
   const properAccel = accelNoDt.clone().sub(new THREE.Vector3(0, -PHYSICS.gravity, 0));
   sim.gLoad = THREE.MathUtils.clamp(properAccel.dot(up) / PHYSICS.gravity, -3, 9);
 
+  // integrate linear
   sim.vel.add(totalForce.divideScalar(PHYSICS.mass).multiplyScalar(dt));
   sim.pos.add(sim.vel.clone().multiplyScalar(dt));
 
+  // integrate angular
   const angAccel = new THREE.Vector3(
     torqueLocal.x / PHYSICS.momentInertia.x,
     torqueLocal.y / PHYSICS.momentInertia.y,
     torqueLocal.z / PHYSICS.momentInertia.z
   );
+
   sim.angularVel.multiplyScalar(1.0 - (2.0 * dt));
   sim.angularVel.add(angAccel.multiplyScalar(dt));
 
@@ -1070,16 +770,51 @@ function updatePhysics(dt) {
     sim.angularVel.z *= 0.8;
   }
 
+  // vapor
+  if (plane && plane.userData.vaporL) {
+    const aoaStrength = THREE.MathUtils.clamp(Math.abs(sim.alpha) / PHYSICS.stallAngle, 0, 1);
+    const speedFactor = THREE.MathUtils.clamp(speed / 120, 0, 1);
+    const vaporOpacity = aoaStrength * speedFactor;
+
+    plane.userData.vaporL.material.opacity = vaporOpacity;
+    plane.userData.vaporR.material.opacity = vaporOpacity;
+
+    if (speed > 1) {
+      const flowLocal = sim.vel.clone().applyQuaternion(sim.quat.clone().invert()).normalize().negate();
+      const vaporQuat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), flowLocal);
+      plane.userData.vaporL.quaternion.copy(vaporQuat);
+      plane.userData.vaporR.quaternion.copy(vaporQuat);
+    }
+  }
+
+  // dust fade-out
+  if (plane && plane.userData.dust) {
+    plane.userData.dust.material.opacity *= 0.75;
+    plane.userData.dust.material.opacity -= 0.6 * dt;
+    if (plane.userData.dust.material.opacity < 0) plane.userData.dust.material.opacity = 0;
+  }
+
+  // below world => crash
+  if (sim.pos.y < -50) {
+    sim.crashed = true;
+    document.getElementById('overlay-msg').innerHTML = "CRASH<br>Click to Reset";
+    document.getElementById('overlay-msg').style.display = 'block';
+    return;
+  }
+
   plane.position.copy(sim.pos);
   plane.quaternion.copy(sim.quat);
 }
 
+/* =========================
+   HUD / Camera / Reset
+========================= */
 function updateHUD() {
   if (!sim.vel) return;
 
   const spd = Math.round(sim.vel.length() * 1.9438);
   const groundBelow = getGroundHeight(sim.pos.x, sim.pos.z);
-  const alt = Math.round((sim.pos.y - (groundBelow + getClearanceMeters())) * 3.2808);
+  const alt = Math.round((sim.pos.y - (groundBelow + 1.35)) * 3.2808);
 
   const fwd = new THREE.Vector3(0,0,-1).applyQuaternion(sim.quat);
   let hdg = Math.round(Math.atan2(-fwd.x, -fwd.z) * 180 / Math.PI);
@@ -1114,36 +849,44 @@ function updateHUD() {
   document.getElementById('aoa-display').innerText = aoaDeg;
   document.getElementById('g-display').innerText = gLoad.toFixed(1);
 
-  let gearText = "MOV";
-  let gearColor = "#fa0";
-  if (sim.gearPos > 0.95) { gearText = "DWN"; gearColor = "#0f0"; }
-  else if (sim.gearPos < 0.05) { gearText = "UP"; gearColor = "#fa0"; }
-  document.getElementById('gear-display').innerText = gearText;
-  document.getElementById('gear-display').style.color = gearColor;
+  document.getElementById('gear-display').innerText = sim.gearDown ? "DWN" : "UP";
+  document.getElementById('gear-display').style.color = sim.gearDown ? "#0f0" : "#fa0";
 
   document.getElementById('stall-warning').style.display = sim.stalled ? 'block' : 'none';
   document.getElementById('brake-warning').style.display = (sim.airBrake && sim.onGround) ? 'block' : 'none';
 
+  // throttle bar
   let barHeight = input.throttle * 100;
   let barColor = '#ffcc00';
   if (sim.airBrake) barHeight = 0;
   else if (sim.afterburner) { barHeight = 100; barColor = 'red'; }
-
   document.getElementById('throttle-fill').style.height = barHeight + '%';
   document.getElementById('throttle-fill').style.backgroundColor = barColor;
+
+  // stall audio (optional file)
+  if (stallAudio) {
+    if (sim.stalled) {
+      if (stallAudio.paused) {
+        stallAudio.currentTime = 0;
+        stallAudio.play().catch(()=>{});
+      }
+    } else {
+      if (!stallAudio.paused) stallAudio.pause();
+    }
+  }
 }
 
 function updateCamera() {
   if (!sim.pos) return;
-  const offset = new THREE.Vector3(0, 8, 44).applyQuaternion(sim.quat); // pulled back (bigger jet)
+  const offset = new THREE.Vector3(0, 5, 25).applyQuaternion(sim.quat);
   const target = sim.pos.clone().add(offset);
   if (target.y < 2) target.y = 2;
   camera.position.lerp(target, 0.1);
-  camera.lookAt(sim.pos.clone().add(new THREE.Vector3(0,0,0).applyQuaternion(sim.quat)));
+  camera.lookAt(sim.pos.clone());
 }
 
 function resetPlane() {
-  sim.pos.set(SPAWN.x, WORLD.runwayY + getClearanceMeters(), SPAWN.z);
+  sim.pos.set(SPAWN.x, WORLD.runwayY + 1.35, SPAWN.z);
   sim.vel.set(0, 0, 0);
   sim.quat.set(0, 0, 0, 1);
   sim.angularVel.set(0, 0, 0);
@@ -1153,40 +896,244 @@ function resetPlane() {
   sim.onGround = true;
 
   sim.gearDown = true;
-  sim.gearPos = 1.0;
-  sim.gearTarget = 1.0;
-
   sim.afterburner = false;
   sim.airBrake = false;
   sim.alpha = 0;
   sim.gLoad = 1.0;
-  sim.brakePos = 0;
 
   input.throttle = 0;
   input.pitch = 0;
   input.roll = 0;
   input.yaw = 0;
 
+  if (plane) {
+    if (plane.userData.gearGroup) plane.userData.gearGroup.visible = true;
+    if (plane.userData.airBrakeL) plane.userData.airBrakeL.rotation.y = 0;
+    if (plane.userData.airBrakeR) plane.userData.airBrakeR.rotation.y = 0;
+    if (plane.userData.dust) plane.userData.dust.material.opacity = 0;
+  }
+
   document.getElementById('throttle-fill').style.height = '0%';
   document.getElementById('overlay-msg').style.display = 'none';
-
-  updateGearAnimation(0);
-  updateSpeedbrakes(0);
 }
 
 /* =========================
-   World
+   Jet Model (procedural)
+========================= */
+function createJetMesh() {
+  const root = new THREE.Group();
+
+  const matBody = new THREE.MeshStandardMaterial({
+    color: VISUALS.colors.fuselage,
+    metalness: 0.7,
+    roughness: 0.28
+  });
+  const matGlass = new THREE.MeshPhysicalMaterial({
+    color: VISUALS.colors.glass,
+    metalness: 0.0,
+    roughness: 0.1,
+    transparent: true,
+    opacity: 0.5,
+    transmission: 0.7,
+    clearcoat: 1.0,
+    clearcoatRoughness: 0.15
+  });
+  const matExhaust = new THREE.MeshStandardMaterial({
+    color: VISUALS.colors.exhaust,
+    metalness: 0.9,
+    roughness: 0.35,
+    emissive: 0x111111,
+    emissiveIntensity: 0.4
+  });
+
+  // Fuselage
+  const fuse = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.6, 12, 24), matBody);
+  fuse.rotation.x = -Math.PI/2;
+  fuse.castShadow = true;
+  root.add(fuse);
+
+  // Nose
+  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.6, 3, 24), matBody);
+  nose.rotation.x = -Math.PI/2;
+  nose.position.z = -7.5;
+  nose.castShadow = true;
+  root.add(nose);
+
+  // Cockpit
+  const cockpit = new THREE.Mesh(new THREE.CapsuleGeometry(0.5, 1.5, 8, 16), matGlass);
+  cockpit.rotation.x = -Math.PI/2;
+  cockpit.position.set(0, 0.8, -3);
+  cockpit.castShadow = true;
+  root.add(cockpit);
+
+  // Air Brakes (left/right near engine)
+  const airBrakeGeo = new THREE.BoxGeometry(0.12, 0.6, 1.5);
+  airBrakeGeo.translate(0, 0, 0.75);
+
+  const brakeL = new THREE.Mesh(airBrakeGeo, matBody);
+  brakeL.position.set(0.9, 0, 4.2);
+  brakeL.castShadow = true;
+  root.add(brakeL);
+
+  const brakeR = new THREE.Mesh(airBrakeGeo, matBody);
+  brakeR.position.set(-0.9, 0, 4.2);
+  brakeR.castShadow = true;
+  root.add(brakeR);
+
+  root.userData.airBrakeL = brakeL;
+  root.userData.airBrakeR = brakeR;
+
+  // Wings
+  const wingShape = new THREE.Shape();
+  const ww = 6, hh = 4, rr = 0.6;
+  wingShape.absarc(ww/2 - rr, hh/2 - rr, rr, 0, Math.PI / 2, false);
+  wingShape.absarc(-ww/2 + rr, hh/2 - rr, rr, Math.PI / 2, Math.PI, false);
+  wingShape.absarc(-ww/2 + rr, -hh/2 + rr, rr, Math.PI, Math.PI * 1.5, false);
+  wingShape.absarc(ww/2 - rr, -hh/2 + rr, rr, Math.PI * 1.5, Math.PI * 2, false);
+
+  const wingGeo = new THREE.ExtrudeGeometry(wingShape, {
+    depth: 0.09,
+    bevelEnabled: true,
+    bevelThickness: 0.03,
+    bevelSize: 0.06,
+    bevelSegments: 4
+  });
+  wingGeo.center();
+  wingGeo.rotateX(Math.PI / 2);
+
+  const wingL = new THREE.Mesh(wingGeo, matBody);
+  wingL.position.set(2.5, 0, 1);
+  wingL.rotation.y = -0.5;
+  wingL.castShadow = true;
+  root.add(wingL);
+
+  const wingR = new THREE.Mesh(wingGeo, matBody);
+  wingR.position.set(-2.5, 0, 1);
+  wingR.rotation.y = 0.5;
+  wingR.castShadow = true;
+  root.add(wingR);
+
+  // Exhaust
+  const exGeo = new THREE.CylinderGeometry(0.7, 0.6, 0.8, 20);
+  const exMesh = new THREE.Mesh(exGeo, matExhaust);
+  exMesh.rotation.x = -Math.PI/2;
+  exMesh.position.set(0, 0, 6.2);
+  exMesh.castShadow = true;
+  root.add(exMesh);
+
+  // Afterburner flames
+  const outerGeo = new THREE.ConeGeometry(0.5, 4.0, 16, 1, true);
+  outerGeo.translate(0, 2.0, 0);
+  outerGeo.rotateX(Math.PI / 2);
+
+  const abOuterMat = new THREE.MeshBasicMaterial({
+    color: 0xffaa33, transparent: true, opacity: 0.55,
+    blending: THREE.AdditiveBlending, depthWrite: false
+  });
+  const flameOuter = new THREE.Mesh(outerGeo, abOuterMat);
+  flameOuter.position.set(0, 0, 6.6);
+  flameOuter.visible = false;
+  root.add(flameOuter);
+
+  const innerGeo = new THREE.ConeGeometry(0.3, 3.0, 16, 1, true);
+  innerGeo.translate(0, 1.5, 0);
+  innerGeo.rotateX(Math.PI / 2);
+
+  const abInnerMat = new THREE.MeshBasicMaterial({
+    color: 0x66c9ff, transparent: true, opacity: 0.8,
+    blending: THREE.AdditiveBlending, depthWrite: false
+  });
+  const flameInner = new THREE.Mesh(innerGeo, abInnerMat);
+  flameInner.position.set(0, 0, 6.7);
+  flameInner.visible = false;
+  root.add(flameInner);
+
+  root.userData.afterburners = [flameOuter, flameInner];
+
+  // Tail
+  const tailGeo = new THREE.BoxGeometry(0.12, 3.1, 3);
+  const tail = new THREE.Mesh(tailGeo, matBody);
+  tail.position.set(0, 1.5, 5.1);
+  tail.rotation.x = 0.55;
+  tail.castShadow = true;
+  root.add(tail);
+
+  // Horizontal stab
+  const hStabGeo = new THREE.BoxGeometry(3.7, 0.12, 2.1);
+  const hStab = new THREE.Mesh(hStabGeo, matBody);
+  hStab.position.set(0, 0.25, 5.6);
+  hStab.rotation.x = -0.1;
+  hStab.castShadow = true;
+  root.add(hStab);
+
+  // Gear group
+  const gearGroup = new THREE.Group();
+  root.add(gearGroup);
+  root.userData.gearGroup = gearGroup;
+
+  const tireGeo = new THREE.CylinderGeometry(0.35, 0.35, 0.25, 16);
+  tireGeo.rotateZ(Math.PI/2);
+  const tireMat = new THREE.MeshStandardMaterial({ color: VISUALS.colors.tire, roughness: 0.9, metalness: 0.0 });
+
+  const noseWheel = new THREE.Mesh(tireGeo, tireMat);
+  noseWheel.position.set(0, -1.2, -5);
+  noseWheel.castShadow = true;
+  gearGroup.add(noseWheel);
+
+  const mainWheelL = new THREE.Mesh(tireGeo, tireMat);
+  mainWheelL.position.set(1.4, -1.2, 1);
+  mainWheelL.castShadow = true;
+  gearGroup.add(mainWheelL);
+
+  const mainWheelR = new THREE.Mesh(tireGeo, tireMat);
+  mainWheelR.position.set(-1.4, -1.2, 1);
+  mainWheelR.castShadow = true;
+  gearGroup.add(mainWheelR);
+
+  // vapor
+  const vaporMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.0, depthWrite: false });
+  const vaporGeo = new THREE.PlaneGeometry(2, 0.4);
+
+  const vaporL = new THREE.Mesh(vaporGeo, vaporMat);
+  vaporL.position.set(3.6, 0, 1.8);
+  vaporL.rotation.y = Math.PI / 2;
+  root.add(vaporL);
+
+  const vaporR = new THREE.Mesh(vaporGeo, vaporMat.clone());
+  vaporR.position.set(-3.6, 0, 1.8);
+  vaporR.rotation.y = -Math.PI / 2;
+  root.add(vaporR);
+
+  root.userData.vaporL = vaporL;
+  root.userData.vaporR = vaporR;
+
+  // dust
+  const dustMat = new THREE.MeshBasicMaterial({ color: 0xaaaaaa, transparent: true, opacity: 0.0, depthWrite: false });
+  const dustGeo = new THREE.PlaneGeometry(6, 3);
+  dustGeo.rotateX(-Math.PI / 2);
+  const dust = new THREE.Mesh(dustGeo, dustMat);
+  dust.position.set(0, -1.2, 1);
+  root.add(dust);
+  root.userData.dust = dust;
+
+  return root;
+}
+
+/* =========================
+   World creation (mountains + triangle grid + runway + trees)
+   NOTE: REMOVED the old white GridHelper like you asked.
 ========================= */
 function createWorld() {
   const size = WORLD.size;
   const segments = WORLD.segments;
 
+  // Build terrain mesh
   const groundGeo = new THREE.PlaneGeometry(size, size, segments, segments);
   const pos = groundGeo.attributes.position;
 
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i);
-    const zPlane = pos.getY(i);
+    const zPlane = pos.getY(i);          // this becomes world Z after rotate
     const worldH = getTerrainMeshWorldHeight_Analytic(x, zPlane);
     const localZ = worldH - WORLD.groundY;
     pos.setZ(i, localZ);
@@ -1208,6 +1155,7 @@ function createWorld() {
   ground.receiveShadow = true;
   scene.add(ground);
 
+  // Triangle wireframe overlay (the “grid” on the mountains)
   const triMat = new THREE.MeshBasicMaterial({
     color: 0x000000,
     wireframe: true,
@@ -1225,6 +1173,7 @@ function createWorld() {
   triGrid.renderOrder = 3;
   scene.add(triGrid);
 
+  // Runway
   const runway = new THREE.Mesh(
     new THREE.PlaneGeometry(RUNWAY_VISUAL_WIDTH, RUNWAY_VISUAL_LENGTH),
     new THREE.MeshStandardMaterial({ color: 0x222428, roughness: 0.82, metalness: 0.08 })
@@ -1234,16 +1183,83 @@ function createWorld() {
   runway.receiveShadow = true;
   runway.castShadow = true;
   scene.add(runway);
+
+  // Centerline dashes
+  const lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  for (let z = -1600; z <= 1600; z += 200) {
+    const mark = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 40), lineMat);
+    mark.rotation.x = -Math.PI/2;
+    mark.position.set(0, WORLD.runwayY + 0.05, z);
+    scene.add(mark);
+  }
+
+  // Edge lines
+  const edgeMat = new THREE.MeshBasicMaterial({ color: 0xe0e0e0 });
+  const leftEdge = new THREE.Mesh(new THREE.PlaneGeometry(1.5, RUNWAY_VISUAL_LENGTH), edgeMat);
+  leftEdge.rotation.x = -Math.PI/2;
+  leftEdge.position.set(-(RUNWAY_VISUAL_WIDTH/2) + 1.5, WORLD.runwayY + 0.04, 0);
+  scene.add(leftEdge);
+
+  const rightEdge = leftEdge.clone();
+  rightEdge.position.x = (RUNWAY_VISUAL_WIDTH/2) - 1.5;
+  scene.add(rightEdge);
+
+  // Touchdown zone stripes
+  const TDZmat = new THREE.MeshBasicMaterial({ color: 0xf5f5f5 });
+  for (let side of [-10, 10]) {
+    for (let i = 0; i < 4; i++) {
+      const stripe = new THREE.Mesh(new THREE.PlaneGeometry(4, 20), TDZmat);
+      stripe.rotation.x = -Math.PI/2;
+      stripe.position.set(side, WORLD.runwayY + 0.06, -1600 + i * 30);
+      scene.add(stripe);
+    }
+  }
+
+  // Trees (placed on terrain height)
+  const trunkGeo = new THREE.CylinderGeometry(0.5, 0.7, 6, 6);
+  const trunkMat = new THREE.MeshLambertMaterial({ color: 0x4a3018 });
+  const leafGeo = new THREE.ConeGeometry(5, 16, 12);
+
+  for (let i = 0; i < 900; i++) {
+    const x = (Math.random() - 0.5) * 4500;
+    const z = (Math.random() - 0.5) * 4500;
+
+    // don't put trees on runway zone
+    if (Math.abs(x) < RUNWAY.halfW + 20 && Math.abs(z) < RUNWAY.halfL + 200) continue;
+
+    const y = getGroundHeight(x, z);
+
+    const tree = new THREE.Group();
+
+    const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+    trunk.position.y = 3;
+    trunk.castShadow = false;
+    tree.add(trunk);
+
+    const c = new THREE.Color().setHSL(0.15 + Math.random() * 0.2, 0.8, 0.3 + Math.random() * 0.4);
+    const leafMat = new THREE.MeshLambertMaterial({ color: c });
+    const leaves = new THREE.Mesh(leafGeo, leafMat);
+    leaves.position.y = 12;
+    leaves.castShadow = true;
+    tree.add(leaves);
+
+    tree.position.set(x, y, z);
+    const s = 0.6 + Math.random() * 0.9;
+    tree.scale.set(s, s, s);
+    tree.rotation.y = Math.random() * Math.PI * 2;
+    scene.add(tree);
+  }
 }
 
 /* =========================
-   Loop
+   Loop / Resize
 ========================= */
 function onResize() {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
 }
+
 function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.1);
