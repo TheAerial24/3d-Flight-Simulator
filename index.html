@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <title>3D Flight Demo (F-86 Sabre Styled + Tri Grid on Hills)</title>
+  <title>3D Flight Demo (F-16 GLB)</title>
   <style>
     body { margin: 0; overflow: hidden; background-color: #87CEEB; font-family: 'Courier New', Courier, monospace; touch-action: none; }
     #canvas-container { width: 100vw; height: 100vh; display: block; }
@@ -57,6 +57,7 @@
       cursor: pointer;
     }
     .btn-start:hover { background: #1976D2; }
+    .btn-start[disabled] { opacity: 0.55; cursor: not-allowed; }
 
     .touch-control { position: absolute; z-index: 15; user-select: none; touch-action: none; }
 
@@ -95,8 +96,6 @@
       cursor: pointer;
     }
   </style>
-
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js"></script>
 </head>
 
 <body>
@@ -127,12 +126,13 @@
 <div id="start-screen" onclick="startGame()">
   <h1>3D Flight Demo</h1>
   <p>Click to Start</p>
+  <p id="start-status" style="margin-top:8px;color:#ffd;">Loading F-16…</p>
   <p>Use <span class="key">W</span> to Throttle Up</p>
   <p>Hold <span class="key">A</span> for Afterburner</p>
   <p>Hold <span class="key">Space</span> for Air Brake / Brakes</p>
   <p>Use <span class="key">G</span> for Landing Gear</p>
   <p>Use <span class="key">Arrows</span> to Steer/Fly</p>
-  <button class="btn-start">START FLIGHT</button>
+  <button id="start-btn" class="btn-start" disabled>LOADING…</button>
 </div>
 
 <div id="overlay-msg" onclick="resetPlane()">CRASH<br>Click to Reset</div>
@@ -146,7 +146,11 @@
 
 <div id="canvas-container"></div>
 
-<script>
+<script type="module">
+import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
+import { GLTFLoader } from "https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
+import { DRACOLoader } from "https://unpkg.com/three@0.160.0/examples/jsm/loaders/DRACOLoader.js";
+
 /* =========================
    Globals
 ========================= */
@@ -160,9 +164,33 @@ let input = { pitch: 0, roll: 0, yaw: 0, throttle: 0 };
 let keys = {};
 
 /* =========================
-   Visual scaling (bigger aircraft + gear + exhaust)
+   F-16 MODEL SETTINGS
 ========================= */
-const PLANE_VISUAL_SCALE = 1.7;
+// Put the model next to index.html (same folder). NO leading slash.
+const MODEL_URL = "f_16_c.glb";
+
+// Scales the model to feel like a real F-16 size in your world (units ~ meters).
+const TARGET_LENGTH_M = 14.8;
+
+// If it spawns sideways/backwards/upside-down, tweak these.
+const F16_FIX_ROT = { x: 0, y: 0, z: 0 };
+
+let modelLoaded = false;
+
+function setStartStatus(msg, ready=false) {
+  const status = document.getElementById("start-status");
+  const btn = document.getElementById("start-btn");
+  if (status) status.textContent = msg;
+  if (btn) {
+    btn.disabled = !ready;
+    btn.textContent = ready ? "START FLIGHT" : "LOADING…";
+  }
+}
+
+/* =========================
+   Visual scaling
+========================= */
+const PLANE_VISUAL_SCALE = 1.0;
 
 /* =========================
    Model dims (auto from bbox)
@@ -182,8 +210,8 @@ function getClearanceMeters() {
    World & Terrain
 ========================= */
 const WORLD = { size: 40000, segments: 140, runwayY: 0.2, groundY: -0.05 };
-const RUNWAY = { halfW: 80, halfL: 2100 }; // collision/safe flat area stays big
-const RUNWAY_VISUAL_WIDTH = 120;           // 2x visual width (was 60)
+const RUNWAY = { halfW: 80, halfL: 2100 };
+const RUNWAY_VISUAL_WIDTH = 120;
 const RUNWAY_VISUAL_LENGTH = 3500;
 
 const SPAWN = { x: 0, z: 1200, flatRadius: 850, fade: 650 };
@@ -371,6 +399,10 @@ function updateGearAnimation(dt) {
    Start / Init
 ========================= */
 function startGame() {
+  if (!modelLoaded || !MODEL_DIM.ready) {
+    setStartStatus("Still loading the F-16… (check console if stuck)", false);
+    return;
+  }
   document.getElementById('start-screen').style.display = 'none';
   gameActive = true;
   resetPlane();
@@ -494,7 +526,7 @@ function init() {
   plane = createAircraftContainer();
   scene.add(plane);
 
-  buildAndAttachF86Model();
+  loadAndAttachF16Model();
 
   window.addEventListener('resize', onResize);
   document.addEventListener('keydown', e => {
@@ -519,11 +551,11 @@ function createAircraftContainer() {
   const root = new THREE.Group();
 
   const modelGroup = new THREE.Group();
-  modelGroup.scale.setScalar(PLANE_VISUAL_SCALE); // BIGGER aircraft
+  modelGroup.scale.setScalar(PLANE_VISUAL_SCALE);
   root.add(modelGroup);
   root.userData.modelGroup = modelGroup;
 
-  // landing gear visuals (will be rescaled to aircraft size in rebuildAircraftAnchors)
+  // landing gear visuals (rescaled to aircraft size later)
   const gearGroup = new THREE.Group();
   root.add(gearGroup);
 
@@ -546,7 +578,7 @@ function createAircraftContainer() {
     ]
   };
 
-  // Afterburner visuals (placed at tail in rebuildAircraftAnchors)
+  // Afterburner visuals
   const outerGeo = new THREE.ConeGeometry(0.50, 3.6, 16, 1, true);
   outerGeo.translate(0, 1.8, 0); outerGeo.rotateX(Math.PI/2);
   const flameOuter = new THREE.Mesh(outerGeo, new THREE.MeshBasicMaterial({
@@ -583,222 +615,108 @@ function createAircraftContainer() {
 }
 
 /* =========================
-   F-86 Sabre-ish model
-   Fixes requested:
-   - fuselage stays same diameter (cylindrical body)
-   - canopy moved forward
-   - vertical stabilizer moved back
-   - exhaust nozzle on the outside (no see-through)
+   Load + attach F-16 GLB
 ========================= */
-function wingHalfShapeF86(span, rootChord, tipChord, sweep, round) {
-  const s = new THREE.Shape();
-  const x0 = 0, x1 = span;
+function loadAndAttachF16Model() {
+  modelLoaded = false;
+  MODEL_DIM.ready = false;
+  setStartStatus("Loading F-16…", false);
 
-  const rootLE = -rootChord * 0.60;
-  const rootTE =  rootChord * 0.40;
+  const mg = plane.userData.modelGroup;
+  mg.clear();
 
-  const tipLE  = rootLE - sweep;
-  const tipTE  = tipLE + tipChord;
+  // small placeholder so it isn't “empty” if load fails
+  const placeholder = new THREE.Mesh(
+    new THREE.BoxGeometry(2, 0.6, 6),
+    new THREE.MeshStandardMaterial({ color: 0xaaaaaa, metalness: 0.2, roughness: 0.85 })
+  );
+  placeholder.castShadow = true;
+  placeholder.receiveShadow = true;
+  mg.add(placeholder);
 
-  const r = Math.min(round, 0.22 * tipChord);
+  const loader = new GLTFLoader();
 
-  s.moveTo(x0, rootLE + r);
-  s.quadraticCurveTo(x0, rootLE, x0 + r, rootLE);
-  s.lineTo(x1 - r, tipLE);
-  s.quadraticCurveTo(x1, tipLE, x1, tipLE + r);
+  const draco = new DRACOLoader();
+  draco.setDecoderPath("https://www.gstatic.com/draco/v1/decoders/");
+  loader.setDRACOLoader(draco);
 
-  s.lineTo(x1, tipTE - r);
-  s.quadraticCurveTo(x1, tipTE, x1 - r, tipTE);
+  loader.load(
+    MODEL_URL,
+    (gltf) => {
+      mg.clear();
 
-  s.lineTo(x0 + r, rootTE);
-  s.quadraticCurveTo(x0, rootTE, x0, rootTE - r);
-  s.closePath();
-  return s;
-}
-function extrudeSurface(shape, thickness) {
-  const geo = new THREE.ExtrudeGeometry(shape, {
-    depth: thickness,
-    bevelEnabled: true,
-    bevelThickness: thickness * 0.55,
-    bevelSize: thickness * 0.65,
-    bevelSegments: 5,
-    curveSegments: 28,
-    steps: 1
-  });
-  geo.rotateX(-Math.PI / 2);
-  geo.computeVertexNormals();
-  return geo;
-}
+      const model = gltf.scene || (gltf.scenes && gltf.scenes[0]);
+      if (!model) {
+        setStartStatus("GLB loaded but no scene found", false);
+        return;
+      }
 
-function buildF86Sabre() {
-  const g = new THREE.Group();
+      model.rotation.set(F16_FIX_ROT.x, F16_FIX_ROT.y, F16_FIX_ROT.z);
 
-  const matBody  = new THREE.MeshStandardMaterial({ color: 0xb7bcc2, metalness: 0.65, roughness: 0.28 });
-  const matDark  = new THREE.MeshStandardMaterial({ color: 0x171b22, metalness: 0.30, roughness: 0.85 });
-  const matEdge  = new THREE.MeshStandardMaterial({ color: 0x6b737c, metalness: 0.35, roughness: 0.45 });
-  const matGlass = new THREE.MeshStandardMaterial({ color: 0x74b7ff, metalness: 0.0, roughness: 0.08, transparent: true, opacity: 0.55 });
+      // If model comes in Z-forward (common in glTF), rotate to match your physics (-Z forward)
+      // Try this if it's backwards: F16_FIX_ROT.y = Math.PI;
 
-  // Fuselage: constant diameter cylinder + smooth nose cap + tail fairing
-  const R = 0.92;
-  const bodyLen = 11.6;
+      model.traverse((o) => {
+        if (o.isMesh) {
+          o.castShadow = true;
+          o.receiveShadow = true;
+        }
+      });
 
-  const fusGeo = new THREE.CylinderGeometry(R, R, bodyLen, 48, 1, false);
-  fusGeo.rotateX(Math.PI / 2);            // align along Z
-  const fus = new THREE.Mesh(fusGeo, matBody);
-  fus.castShadow = true;
-  fus.receiveShadow = true;
-  fus.position.z = 0.25;
-  g.add(fus);
+      // Scale to target length using largest horizontal axis (robust)
+      model.updateMatrixWorld(true);
+      let box = new THREE.Box3().setFromObject(model);
+      const size = new THREE.Vector3();
+      box.getSize(size);
 
-  // Nose cap (smooth)
-  const noseCap = new THREE.Mesh(new THREE.SphereGeometry(R, 40, 28), matBody);
-  noseCap.scale.z = 0.92;
-  noseCap.position.z = -5.55;             // cylinder front is around -5.55
-  noseCap.castShadow = true;
-  g.add(noseCap);
+      const currentLen = Math.max(0.0001, Math.max(size.x, size.z));
+      const s = TARGET_LENGTH_M / currentLen;
+      model.scale.setScalar(s);
 
-  // Smooth nose intake: lip ring + duct + bullet
-  const lip = new THREE.Mesh(new THREE.TorusGeometry(R * 0.98, R * 0.08, 18, 48), matEdge);
-  lip.rotation.x = Math.PI / 2;
-  lip.position.z = -6.15;
-  lip.castShadow = true;
-  g.add(lip);
+      // Center at origin + sit on ground
+      model.updateMatrixWorld(true);
+      box = new THREE.Box3().setFromObject(model);
+      const center = new THREE.Vector3();
+      box.getCenter(center);
+      model.position.sub(center);
 
-  const ductGeo = new THREE.CylinderGeometry(R*0.86, R*0.80, 1.9, 40, 1, true);
-  ductGeo.rotateX(Math.PI / 2);
-  const duct = new THREE.Mesh(ductGeo, matDark);
-  duct.position.z = -5.55;
-  duct.castShadow = true;
-  g.add(duct);
+      model.updateMatrixWorld(true);
+      box = new THREE.Box3().setFromObject(model);
+      model.position.y -= box.min.y;
 
-  const bulletGeo = new THREE.ConeGeometry(R*0.33, R*1.15, 32);
-  bulletGeo.rotateX(Math.PI / 2);
-  const bullet = new THREE.Mesh(bulletGeo, matEdge);
-  bullet.position.z = -5.92;
-  bullet.castShadow = true;
-  g.add(bullet);
+      mg.add(model);
 
-  // Cockpit canopy (shorter back) — MOVED FORWARD
-  const canopyGeo = new THREE.CapsuleGeometry(0.50, 1.10, 12, 26);
-  canopyGeo.rotateX(Math.PI / 2);
-  const canopy = new THREE.Mesh(canopyGeo, matGlass);
-  canopy.scale.set(1.15, 0.70, 1.55);
-  canopy.position.set(0, 0.62, -2.15);    // moved forward
-  canopy.castShadow = true;
-  g.add(canopy);
+      // update MODEL_DIM from bbox (used for gear/clearance)
+      plane.updateMatrixWorld(true);
+      const bbox = new THREE.Box3().setFromObject(mg);
+      const finalSize = new THREE.Vector3();
+      bbox.getSize(finalSize);
 
-  const frameGeo = new THREE.CapsuleGeometry(0.52, 1.05, 10, 22);
-  frameGeo.rotateX(Math.PI / 2);
-  const frame = new THREE.Mesh(frameGeo, matEdge);
-  frame.scale.copy(canopy.scale);
-  frame.position.copy(canopy.position);
-  frame.material.transparent = true;
-  frame.material.opacity = 0.28;
-  g.add(frame);
+      MODEL_DIM.ready = true;
+      MODEL_DIM.size.copy(finalSize);
+      MODEL_DIM.bellyHeight    = Math.max(0.35, finalSize.y * 0.22);
+      MODEL_DIM.gearHeightFull = Math.max(0.95, finalSize.y * 0.55);
 
-  // Wing (swept, Sabre-style)
-  const wingT = 0.12;
-  const halfWing = wingHalfShapeF86(4.25, 3.25, 1.60, 1.45, 0.24);
-  const wingHalfMesh = new THREE.Mesh(extrudeSurface(halfWing, wingT), matBody);
-  wingHalfMesh.position.set(0, -0.14, -0.10);
-  wingHalfMesh.castShadow = true;
+      rebuildAircraftAnchors();
+      updateGearAnimation(0);
+      resetPlane();
 
-  const wingR = wingHalfMesh;
-  const wingL = wingHalfMesh.clone(); wingL.scale.x = -1;
-  g.add(wingR, wingL);
-
-  // Wing fillet
-  const filletGeo = new THREE.CapsuleGeometry(0.44, 1.9, 10, 22);
-  filletGeo.rotateX(Math.PI / 2);
-  const fillet = new THREE.Mesh(filletGeo, matEdge);
-  fillet.scale.set(2.9, 0.18, 1.25);
-  fillet.position.set(0, -0.14, -0.25);
-  g.add(fillet);
-
-  // Vertical fin — MOVED BACK (was too forward)
-  const finShape = new THREE.Shape();
-  finShape.moveTo(0, 0);
-  finShape.quadraticCurveTo(0.10, 0.55, 0.36, 1.70);
-  finShape.lineTo(0.98, 1.62);
-  finShape.lineTo(0.58, 0.10);
-  finShape.closePath();
-  const finGeo = extrudeSurface(finShape, 0.11);
-
-  const fin = new THREE.Mesh(finGeo, matBody);
-  fin.rotation.y = Math.PI / 2;
-  fin.position.set(0, 0.46, 5.05);        // moved back near tail
-  fin.castShadow = true;
-  g.add(fin);
-
-  // Horizontal stabilizer + “elevators a bit lower”
-  const stabT = 0.10;
-  const stabHalf = wingHalfShapeF86(1.95, 1.90, 1.10, 0.55, 0.22);
-  const stabHalfMesh = new THREE.Mesh(extrudeSurface(stabHalf, stabT), matBody);
-  stabHalfMesh.castShadow = true;
-
-  const stabR = stabHalfMesh;
-  const stabL = stabHalfMesh.clone(); stabL.scale.x = -1;
-
-  const tailplane = new THREE.Group();
-  tailplane.add(stabR, stabL);
-  tailplane.position.set(0, 0.26, 5.80);
-  tailplane.rotation.x = THREE.MathUtils.degToRad(-7);
-  g.add(tailplane);
-
-  // Exhaust: OUTSIDE nozzle (no see-through) + inner turbine disk
-  const nozzleLen = 1.55;
-  const nozOuterGeo = new THREE.CylinderGeometry(R*0.72, R*0.62, nozzleLen, 48, 1, false);
-  nozOuterGeo.rotateX(Math.PI/2);
-  const nozzleOuter = new THREE.Mesh(nozOuterGeo, matEdge);
-  nozzleOuter.position.z = 6.50;
-  nozzleOuter.castShadow = true;
-  g.add(nozzleOuter);
-
-  const nozInnerGeo = new THREE.CylinderGeometry(R*0.52, R*0.50, nozzleLen*0.92, 40, 1, true);
-  nozInnerGeo.rotateX(Math.PI/2);
-  const nozzleInner = new THREE.Mesh(nozInnerGeo, matDark);
-  nozzleInner.position.z = 6.44;
-  nozzleInner.castShadow = true;
-  g.add(nozzleInner);
-
-  const cap = new THREE.Mesh(new THREE.CircleGeometry(R*0.56, 40), matDark);
-  cap.position.z = 7.28;
-  cap.rotation.y = Math.PI;
-  g.add(cap);
-
-  const turb = new THREE.Mesh(new THREE.CircleGeometry(R*0.46, 40), matEdge);
-  turb.position.z = 6.96;
-  turb.rotation.y = Math.PI;
-  g.add(turb);
-
-  // Little tailcone fairing to blend fuselage to nozzle
-  const fairGeo = new THREE.ConeGeometry(R*0.78, 1.05, 40);
-  fairGeo.rotateX(Math.PI/2);
-  const fair = new THREE.Mesh(fairGeo, matBody);
-  fair.position.z = 5.78;
-  fair.castShadow = true;
-  g.add(fair);
-
-  return g;
-}
-
-function buildAndAttachF86Model() {
-  const model = buildF86Sabre();
-  plane.userData.modelGroup.add(model);
-
-  plane.updateMatrixWorld(true);
-  const bbox = new THREE.Box3().setFromObject(plane.userData.modelGroup);
-  const size = new THREE.Vector3();
-  bbox.getSize(size);
-
-  MODEL_DIM.ready = true;
-  MODEL_DIM.size.copy(size);
-  MODEL_DIM.bellyHeight    = Math.max(0.45, size.y * 0.20);
-  MODEL_DIM.gearHeightFull = Math.max(1.25, size.y * 0.48);
-
-  rebuildAircraftAnchors();
-  updateGearAnimation(0);
-  resetPlane();
+      modelLoaded = true;
+      setStartStatus("F-16 loaded ✅ Click to Start", true);
+    },
+    (xhr) => {
+      if (xhr.total) {
+        const pct = Math.round((xhr.loaded / xhr.total) * 100);
+        setStartStatus(`Loading F-16… ${pct}%`, false);
+      } else {
+        setStartStatus("Loading F-16…", false);
+      }
+    },
+    (err) => {
+      console.error("Failed to load model:", err);
+      setStartStatus("FAILED to load f_16_c.glb (filename / GitHub Pages path)", false);
+    }
+  );
 }
 
 function rebuildAircraftAnchors() {
@@ -822,7 +740,7 @@ function rebuildAircraftAnchors() {
   parts[1].downPos.copy(mainLDownPos); parts[1].upPos.copy(mainLUpPos);
   parts[2].downPos.copy(mainRDownPos); parts[2].upPos.copy(mainRUpPos);
 
-  // Scale gear wheels UP with aircraft size (so gear/exhaust/model all look bigger)
+  // Scale gear wheels with aircraft size
   const noseWheel = parts[0].mesh;
   const mainWheelL = parts[1].mesh;
   const mainWheelR = parts[2].mesh;
@@ -838,7 +756,6 @@ function rebuildAircraftAnchors() {
     plane.userData.afterburners[0].position.set(0, 0, tailZ);
     plane.userData.afterburners[1].position.set(0, 0, tailZ + 0.12);
 
-    // also scale flames so they match bigger nozzle
     const abS = Math.max(1.2, W * 0.08);
     plane.userData.afterburners[0].scale.set(abS, abS, abS);
     plane.userData.afterburners[1].scale.set(abS * 0.8, abS * 0.8, abS * 0.8);
@@ -1197,7 +1114,7 @@ function resetPlane() {
 }
 
 /* =========================
-   World (tri grid on hills + wider runway + more runway detail)
+   World (tri grid on hills + wider runway + runway detail)
 ========================= */
 function createWorld() {
   const size = WORLD.size;
@@ -1248,7 +1165,7 @@ function createWorld() {
   triGrid.renderOrder = 3;
   scene.add(triGrid);
 
-  // runway (2x visual width)
+  // runway
   const runway = new THREE.Mesh(
     new THREE.PlaneGeometry(RUNWAY_VISUAL_WIDTH, RUNWAY_VISUAL_LENGTH),
     new THREE.MeshStandardMaterial({ color: 0x222428, roughness: 0.82, metalness: 0.08 })
@@ -1259,7 +1176,7 @@ function createWorld() {
   runway.castShadow = true;
   scene.add(runway);
 
-  // runway shoulders for extra detail
+  // runway shoulders
   const shoulderMat = new THREE.MeshStandardMaterial({ color: 0x2a2d33, roughness: 0.9, metalness: 0.03 });
   const shoulderW = 18;
   const leftShoulder = new THREE.Mesh(new THREE.PlaneGeometry(shoulderW, RUNWAY_VISUAL_LENGTH), shoulderMat);
@@ -1270,7 +1187,7 @@ function createWorld() {
   rightShoulder.position.x = (RUNWAY_VISUAL_WIDTH/2 + shoulderW/2);
   scene.add(rightShoulder);
 
-  // runway centerline markings
+  // centerline
   const lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
   for (let z = -1600; z <= 1600; z += 180) {
     const mark = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 55), lineMat);
@@ -1279,7 +1196,7 @@ function createWorld() {
     scene.add(mark);
   }
 
-  // threshold bars (simple)
+  // threshold bars
   const threshMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
   const barW = 6.5, barL = 26;
   for (let i = -3; i <= 3; i++) {
@@ -1384,6 +1301,11 @@ function animate() {
 }
 
 window.addEventListener('load', init);
+
+// expose for inline onclick=""
+window.startGame = startGame;
+window.resetPlane = resetPlane;
+
 </script>
 </body>
 </html>
