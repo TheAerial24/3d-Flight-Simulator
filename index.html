@@ -385,17 +385,22 @@ function updateGearAnimation(dt) {
 
   const t = easeInOutCubic(sim.gearPos);
 
+  // If HUD would read "UP" (gearPos < 0.05), hide the gear meshes.
+  const gearVisible = sim.gearPos >= 0.05;
+
   for (const part of plane.userData.gear.parts) {
     part.mesh.position.set(
-      THREE.MathUtils.lerp(part.upPos.x,   part.downPos.x,   t),
-      THREE.MathUtils.lerp(part.upPos.y,   part.downPos.y,   t),
-      THREE.MathUtils.lerp(part.upPos.z,   part.downPos.z,   t),
+      THREE.MathUtils.lerp(part.upPos.x, part.downPos.x, t),
+      THREE.MathUtils.lerp(part.upPos.y, part.downPos.y, t),
+      THREE.MathUtils.lerp(part.upPos.z, part.downPos.z, t)
     );
     part.mesh.rotation.set(
-      THREE.MathUtils.lerp(part.upRot.x,   part.downRot.x,   t),
-      THREE.MathUtils.lerp(part.upRot.y,   part.downRot.y,   t),
-      THREE.MathUtils.lerp(part.upRot.z,   part.downRot.z,   t),
+      THREE.MathUtils.lerp(part.upRot.x, part.downRot.x, t),
+      THREE.MathUtils.lerp(part.upRot.y, part.downRot.y, t),
+      THREE.MathUtils.lerp(part.upRot.z, part.downRot.z, t)
     );
+
+    part.mesh.visible = gearVisible;
   }
 }
 
@@ -1079,7 +1084,7 @@ function createJetMesh() {
 }
 
 /* =========================
-   World (Terrain + Grid + Runway + Trees)
+   World (Terrain + Runway + Trees)
 ========================= */
 function createWorld() {
   const size = WORLD.size;
@@ -1113,22 +1118,6 @@ function createWorld() {
   ground.position.y = WORLD.groundY;
   ground.receiveShadow = true;
   scene.add(ground);
-
-  // Wire “grid”
-  const groundGrid = new THREE.Mesh(groundGeo.clone(), new THREE.MeshBasicMaterial({
-    color: 0x111111,
-    wireframe: true,
-    transparent: true,
-    opacity: 0.22,
-    depthWrite: false,
-    polygonOffset: true,
-    polygonOffsetFactor: -1,
-    polygonOffsetUnits: -1
-  }));
-  groundGrid.rotation.x = -Math.PI/2;
-  groundGrid.position.y = WORLD.groundY + 0.02;
-  groundGrid.renderOrder = 2;
-  scene.add(groundGrid);
 
   // Runway (flat)
   const runway = new THREE.Mesh(new THREE.PlaneGeometry(60, 3500), new THREE.MeshStandardMaterial({
