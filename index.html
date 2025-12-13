@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <title>3D Flight Demo (F-86 Sabre + Tri Grid on Hills)</title>
+  <title>3D Flight Demo (F-86 Sabre Styled + Tri Grid on Hills)</title>
   <style>
     body { margin: 0; overflow: hidden; background-color: #87CEEB; font-family: 'Courier New', Courier, monospace; touch-action: none; }
     #canvas-container { width: 100vw; height: 100vh; display: block; }
@@ -115,7 +115,7 @@
 
 <div id="controls-help">
   <b>Controls:</b><br>
-  <span class="key">W</span> / <span class="key">S</span> - Throttle (Hold W)<br>
+  <span class="key">W</span> / <span class="key">S</span> - Throttle<br>
   <span class="key">A</span> - Afterburner (Hold)<br>
   <span class="key">Space</span> - Air Brake / Wheel Brakes<br>
   <span class="key">G</span> - Toggle Landing Gear<br>
@@ -160,13 +160,18 @@ let input = { pitch: 0, roll: 0, yaw: 0, throttle: 0 };
 let keys = {};
 
 /* =========================
+   Visual scaling (bigger aircraft + gear + exhaust)
+========================= */
+const PLANE_VISUAL_SCALE = 1.7;
+
+/* =========================
    Model dims (auto from bbox)
 ========================= */
 const MODEL_DIM = {
   ready: false,
   size: new THREE.Vector3(10, 3, 12),
-  bellyHeight: 0.45,
-  gearHeightFull: 1.25
+  bellyHeight: 0.50,
+  gearHeightFull: 1.45
 };
 function getClearanceMeters() {
   const gearEffect = sim.gearPos;
@@ -177,7 +182,9 @@ function getClearanceMeters() {
    World & Terrain
 ========================= */
 const WORLD = { size: 40000, segments: 140, runwayY: 0.2, groundY: -0.05 };
-const RUNWAY = { halfW: 80, halfL: 2100 };
+const RUNWAY = { halfW: 80, halfL: 2100 }; // collision/safe flat area stays big
+const RUNWAY_VISUAL_WIDTH = 120;           // 2x visual width (was 60)
+const RUNWAY_VISUAL_LENGTH = 3500;
 
 const SPAWN = { x: 0, z: 1200, flatRadius: 850, fade: 650 };
 const VALLEY = {
@@ -512,10 +519,11 @@ function createAircraftContainer() {
   const root = new THREE.Group();
 
   const modelGroup = new THREE.Group();
+  modelGroup.scale.setScalar(PLANE_VISUAL_SCALE); // BIGGER aircraft
   root.add(modelGroup);
   root.userData.modelGroup = modelGroup;
 
-  // fallback gear visuals
+  // landing gear visuals (will be rescaled to aircraft size in rebuildAircraftAnchors)
   const gearGroup = new THREE.Group();
   root.add(gearGroup);
 
@@ -538,17 +546,17 @@ function createAircraftContainer() {
     ]
   };
 
-  // Afterburners (visual only)
-  const outerGeo = new THREE.ConeGeometry(0.45, 3.2, 16, 1, true);
-  outerGeo.translate(0, 1.6, 0); outerGeo.rotateX(Math.PI/2);
+  // Afterburner visuals (placed at tail in rebuildAircraftAnchors)
+  const outerGeo = new THREE.ConeGeometry(0.50, 3.6, 16, 1, true);
+  outerGeo.translate(0, 1.8, 0); outerGeo.rotateX(Math.PI/2);
   const flameOuter = new THREE.Mesh(outerGeo, new THREE.MeshBasicMaterial({
     color: 0xffaa33, transparent: true, opacity: 0.55,
     blending: THREE.AdditiveBlending, depthWrite: false
   }));
   flameOuter.visible = false; root.add(flameOuter);
 
-  const innerGeo = new THREE.ConeGeometry(0.26, 2.4, 16, 1, true);
-  innerGeo.translate(0, 1.2, 0); innerGeo.rotateX(Math.PI/2);
+  const innerGeo = new THREE.ConeGeometry(0.30, 2.7, 16, 1, true);
+  innerGeo.translate(0, 1.35, 0); innerGeo.rotateX(Math.PI/2);
   const flameInner = new THREE.Mesh(innerGeo, new THREE.MeshBasicMaterial({
     color: 0x66c9ff, transparent: true, opacity: 0.8,
     blending: THREE.AdditiveBlending, depthWrite: false
@@ -575,12 +583,12 @@ function createAircraftContainer() {
 }
 
 /* =========================
-   F-86 Sabre model
-   - horizontal stabilizer added
-   - smooth nose intake
-   - elevators slightly lower
-   - canopy shortened at back
-   - engine not see-through (rear panel + turbine)
+   F-86 Sabre-ish model
+   Fixes requested:
+   - fuselage stays same diameter (cylindrical body)
+   - canopy moved forward
+   - vertical stabilizer moved back
+   - exhaust nozzle on the outside (no see-through)
 ========================= */
 function wingHalfShapeF86(span, rootChord, tipChord, sweep, round) {
   const s = new THREE.Shape();
@@ -599,7 +607,6 @@ function wingHalfShapeF86(span, rootChord, tipChord, sweep, round) {
   s.lineTo(x1 - r, tipLE);
   s.quadraticCurveTo(x1, tipLE, x1, tipLE + r);
 
-  // trailing edge (slight kink)
   s.lineTo(x1, tipTE - r);
   s.quadraticCurveTo(x1, tipTE, x1 - r, tipTE);
 
@@ -608,7 +615,6 @@ function wingHalfShapeF86(span, rootChord, tipChord, sweep, round) {
   s.closePath();
   return s;
 }
-
 function extrudeSurface(shape, thickness) {
   const geo = new THREE.ExtrudeGeometry(shape, {
     depth: thickness,
@@ -628,69 +634,63 @@ function buildF86Sabre() {
   const g = new THREE.Group();
 
   const matBody  = new THREE.MeshStandardMaterial({ color: 0xb7bcc2, metalness: 0.65, roughness: 0.28 });
-  const matDark  = new THREE.MeshStandardMaterial({ color: 0x1b1f26, metalness: 0.30, roughness: 0.85 });
+  const matDark  = new THREE.MeshStandardMaterial({ color: 0x171b22, metalness: 0.30, roughness: 0.85 });
   const matEdge  = new THREE.MeshStandardMaterial({ color: 0x6b737c, metalness: 0.35, roughness: 0.45 });
   const matGlass = new THREE.MeshStandardMaterial({ color: 0x74b7ff, metalness: 0.0, roughness: 0.08, transparent: true, opacity: 0.55 });
 
-  // Fuselage (lathe) with a nose sized for intake
-  const pts = [
-    new THREE.Vector2(0.82, -6.25), // intake lip radius
-    new THREE.Vector2(0.88, -5.90),
-    new THREE.Vector2(0.92, -5.10),
-    new THREE.Vector2(0.92, -3.70),
-    new THREE.Vector2(0.86, -2.20),
-    new THREE.Vector2(0.78, -0.30),
-    new THREE.Vector2(0.74,  1.60),
-    new THREE.Vector2(0.70,  3.40),
-    new THREE.Vector2(0.62,  5.30),
-    new THREE.Vector2(0.58,  6.35)  // tail outer
-  ];
-  const fusGeo = new THREE.LatheGeometry(pts, 80);
-  fusGeo.rotateX(Math.PI / 2);
+  // Fuselage: constant diameter cylinder + smooth nose cap + tail fairing
+  const R = 0.92;
+  const bodyLen = 11.6;
+
+  const fusGeo = new THREE.CylinderGeometry(R, R, bodyLen, 48, 1, false);
+  fusGeo.rotateX(Math.PI / 2);            // align along Z
   const fus = new THREE.Mesh(fusGeo, matBody);
   fus.castShadow = true;
   fus.receiveShadow = true;
+  fus.position.z = 0.25;
   g.add(fus);
 
+  // Nose cap (smooth)
+  const noseCap = new THREE.Mesh(new THREE.SphereGeometry(R, 40, 28), matBody);
+  noseCap.scale.z = 0.92;
+  noseCap.position.z = -5.55;             // cylinder front is around -5.55
+  noseCap.castShadow = true;
+  g.add(noseCap);
+
   // Smooth nose intake: lip ring + duct + bullet
-  const lip = new THREE.Mesh(
-    new THREE.TorusGeometry(0.86, 0.06, 16, 36),
-    matEdge
-  );
+  const lip = new THREE.Mesh(new THREE.TorusGeometry(R * 0.98, R * 0.08, 18, 48), matEdge);
   lip.rotation.x = Math.PI / 2;
-  lip.position.z = -6.23;
+  lip.position.z = -6.15;
   lip.castShadow = true;
   g.add(lip);
 
-  // duct (dark)
-  const ductGeo = new THREE.CylinderGeometry(0.78, 0.70, 1.6, 28, 1, true);
+  const ductGeo = new THREE.CylinderGeometry(R*0.86, R*0.80, 1.9, 40, 1, true);
   ductGeo.rotateX(Math.PI / 2);
   const duct = new THREE.Mesh(ductGeo, matDark);
-  duct.position.z = -5.65;
+  duct.position.z = -5.55;
   duct.castShadow = true;
   g.add(duct);
 
-  // intake bullet (center body)
-  const bulletGeo = new THREE.ConeGeometry(0.30, 0.95, 24);
+  const bulletGeo = new THREE.ConeGeometry(R*0.33, R*1.15, 32);
   bulletGeo.rotateX(Math.PI / 2);
   const bullet = new THREE.Mesh(bulletGeo, matEdge);
-  bullet.position.z = -5.95;
+  bullet.position.z = -5.92;
   bullet.castShadow = true;
   g.add(bullet);
 
-  // Cockpit canopy (shortened from the back)
+  // Cockpit canopy (shorter back) — MOVED FORWARD
   const canopyGeo = new THREE.CapsuleGeometry(0.50, 1.10, 12, 26);
   canopyGeo.rotateX(Math.PI / 2);
   const canopy = new THREE.Mesh(canopyGeo, matGlass);
-  canopy.scale.set(1.15, 0.70, 1.65);     // shorter tail end
-  canopy.position.set(0, 0.62, -1.35);    // slightly forward
+  canopy.scale.set(1.15, 0.70, 1.55);
+  canopy.position.set(0, 0.62, -2.15);    // moved forward
   canopy.castShadow = true;
   g.add(canopy);
 
   const frameGeo = new THREE.CapsuleGeometry(0.52, 1.05, 10, 22);
   frameGeo.rotateX(Math.PI / 2);
   const frame = new THREE.Mesh(frameGeo, matEdge);
-  frame.scale.set(1.16, 0.71, 1.66);
+  frame.scale.copy(canopy.scale);
   frame.position.copy(canopy.position);
   frame.material.transparent = true;
   frame.material.opacity = 0.28;
@@ -698,87 +698,86 @@ function buildF86Sabre() {
 
   // Wing (swept, Sabre-style)
   const wingT = 0.12;
-  const halfWing = wingHalfShapeF86(
-    4.25, // half-span
-    3.25, // root chord
-    1.60, // tip chord
-    1.45, // sweep
-    0.24  // rounding
-  );
+  const halfWing = wingHalfShapeF86(4.25, 3.25, 1.60, 1.45, 0.24);
   const wingHalfMesh = new THREE.Mesh(extrudeSurface(halfWing, wingT), matBody);
-  wingHalfMesh.position.set(0, -0.12, -0.05);
+  wingHalfMesh.position.set(0, -0.14, -0.10);
   wingHalfMesh.castShadow = true;
 
   const wingR = wingHalfMesh;
-  const wingL = wingHalfMesh.clone();
-  wingL.scale.x = -1;
+  const wingL = wingHalfMesh.clone(); wingL.scale.x = -1;
   g.add(wingR, wingL);
 
   // Wing fillet
-  const filletGeo = new THREE.CapsuleGeometry(0.44, 1.8, 10, 22);
+  const filletGeo = new THREE.CapsuleGeometry(0.44, 1.9, 10, 22);
   filletGeo.rotateX(Math.PI / 2);
   const fillet = new THREE.Mesh(filletGeo, matEdge);
-  fillet.scale.set(2.8, 0.18, 1.25);
-  fillet.position.set(0, -0.12, -0.15);
+  fillet.scale.set(2.9, 0.18, 1.25);
+  fillet.position.set(0, -0.14, -0.25);
   g.add(fillet);
 
-  // Vertical fin
+  // Vertical fin — MOVED BACK (was too forward)
   const finShape = new THREE.Shape();
   finShape.moveTo(0, 0);
   finShape.quadraticCurveTo(0.10, 0.55, 0.36, 1.70);
   finShape.lineTo(0.98, 1.62);
   finShape.lineTo(0.58, 0.10);
   finShape.closePath();
+  const finGeo = extrudeSurface(finShape, 0.11);
 
-  const finGeo = extrudeSurface(finShape, 0.10);
   const fin = new THREE.Mesh(finGeo, matBody);
   fin.rotation.y = Math.PI / 2;
-  fin.position.set(0, 0.46, 3.75);
+  fin.position.set(0, 0.46, 5.05);        // moved back near tail
   fin.castShadow = true;
   g.add(fin);
 
-  // Horizontal stabilizer (added) + elevators lowered slightly
-  // Tailplane sits a bit LOWER than before, elevators droop down.
+  // Horizontal stabilizer + “elevators a bit lower”
   const stabT = 0.10;
-  const stabHalf = wingHalfShapeF86(
-    1.95, // half span
-    1.90, // root chord
-    1.10, // tip chord
-    0.55, // sweep
-    0.22
-  );
+  const stabHalf = wingHalfShapeF86(1.95, 1.90, 1.10, 0.55, 0.22);
   const stabHalfMesh = new THREE.Mesh(extrudeSurface(stabHalf, stabT), matBody);
   stabHalfMesh.castShadow = true;
 
   const stabR = stabHalfMesh;
-  const stabL = stabHalfMesh.clone();
-  stabL.scale.x = -1;
+  const stabL = stabHalfMesh.clone(); stabL.scale.x = -1;
 
   const tailplane = new THREE.Group();
   tailplane.add(stabR, stabL);
-  tailplane.position.set(0, 0.28, 4.95);   // LOWERED a bit
-  tailplane.rotation.x = THREE.MathUtils.degToRad(-6); // "elevators lowered a bit" feel
+  tailplane.position.set(0, 0.26, 5.80);
+  tailplane.rotation.x = THREE.MathUtils.degToRad(-7);
   g.add(tailplane);
 
-  // Engine tail: NOT see-through (cap + turbine disk)
-  const tailPipeGeo = new THREE.CylinderGeometry(0.46, 0.50, 1.25, 30, 1, false);
-  tailPipeGeo.rotateX(Math.PI / 2);
-  const tailPipe = new THREE.Mesh(tailPipeGeo, matDark);
-  tailPipe.position.z = 6.20;
-  tailPipe.castShadow = true;
-  g.add(tailPipe);
+  // Exhaust: OUTSIDE nozzle (no see-through) + inner turbine disk
+  const nozzleLen = 1.55;
+  const nozOuterGeo = new THREE.CylinderGeometry(R*0.72, R*0.62, nozzleLen, 48, 1, false);
+  nozOuterGeo.rotateX(Math.PI/2);
+  const nozzleOuter = new THREE.Mesh(nozOuterGeo, matEdge);
+  nozzleOuter.position.z = 6.50;
+  nozzleOuter.castShadow = true;
+  g.add(nozzleOuter);
 
-  // rear cap panel (blocks view through)
-  const cap = new THREE.Mesh(new THREE.CircleGeometry(0.48, 28), matDark);
-  cap.position.z = 6.83;
-  cap.rotation.y = Math.PI; // face backward
+  const nozInnerGeo = new THREE.CylinderGeometry(R*0.52, R*0.50, nozzleLen*0.92, 40, 1, true);
+  nozInnerGeo.rotateX(Math.PI/2);
+  const nozzleInner = new THREE.Mesh(nozInnerGeo, matDark);
+  nozzleInner.position.z = 6.44;
+  nozzleInner.castShadow = true;
+  g.add(nozzleInner);
+
+  const cap = new THREE.Mesh(new THREE.CircleGeometry(R*0.56, 40), matDark);
+  cap.position.z = 7.28;
+  cap.rotation.y = Math.PI;
   g.add(cap);
 
-  // turbine disk inside
-  const turb = new THREE.Mesh(new THREE.CircleGeometry(0.42, 28), matEdge);
-  turb.position.z = 6.55;
+  const turb = new THREE.Mesh(new THREE.CircleGeometry(R*0.46, 40), matEdge);
+  turb.position.z = 6.96;
   turb.rotation.y = Math.PI;
   g.add(turb);
+
+  // Little tailcone fairing to blend fuselage to nozzle
+  const fairGeo = new THREE.ConeGeometry(R*0.78, 1.05, 40);
+  fairGeo.rotateX(Math.PI/2);
+  const fair = new THREE.Mesh(fairGeo, matBody);
+  fair.position.z = 5.78;
+  fair.castShadow = true;
+  g.add(fair);
 
   return g;
 }
@@ -794,8 +793,8 @@ function buildAndAttachF86Model() {
 
   MODEL_DIM.ready = true;
   MODEL_DIM.size.copy(size);
-  MODEL_DIM.bellyHeight    = Math.max(0.35, size.y * 0.18);
-  MODEL_DIM.gearHeightFull = Math.max(1.10, size.y * 0.42);
+  MODEL_DIM.bellyHeight    = Math.max(0.45, size.y * 0.20);
+  MODEL_DIM.gearHeightFull = Math.max(1.25, size.y * 0.48);
 
   rebuildAircraftAnchors();
   updateGearAnimation(0);
@@ -823,22 +822,38 @@ function rebuildAircraftAnchors() {
   parts[1].downPos.copy(mainLDownPos); parts[1].upPos.copy(mainLUpPos);
   parts[2].downPos.copy(mainRDownPos); parts[2].upPos.copy(mainRUpPos);
 
+  // Scale gear wheels UP with aircraft size (so gear/exhaust/model all look bigger)
+  const noseWheel = parts[0].mesh;
+  const mainWheelL = parts[1].mesh;
+  const mainWheelR = parts[2].mesh;
+
+  const noseScale = Math.max(1.0, W * 0.055);
+  const mainScale = Math.max(1.2, W * 0.065);
+  noseWheel.scale.set(noseScale, noseScale, noseScale);
+  mainWheelL.scale.set(mainScale, mainScale, mainScale);
+  mainWheelR.scale.set(mainScale, mainScale, mainScale);
+
   if (plane.userData.afterburners) {
-    const tailZ = (L * 0.53);
+    const tailZ = (L * 0.56);
     plane.userData.afterburners[0].position.set(0, 0, tailZ);
-    plane.userData.afterburners[1].position.set(0, 0, tailZ + 0.10);
+    plane.userData.afterburners[1].position.set(0, 0, tailZ + 0.12);
+
+    // also scale flames so they match bigger nozzle
+    const abS = Math.max(1.2, W * 0.08);
+    plane.userData.afterburners[0].scale.set(abS, abS, abS);
+    plane.userData.afterburners[1].scale.set(abS * 0.8, abS * 0.8, abS * 0.8);
   }
 
   if (plane.userData.vaporL && plane.userData.vaporR) {
-    plane.userData.vaporL.position.set( W * 0.52, 0, 0);
-    plane.userData.vaporR.position.set(-W * 0.52, 0, 0);
-    plane.userData.vaporL.scale.setScalar(Math.max(0.8, W * 0.12));
-    plane.userData.vaporR.scale.setScalar(Math.max(0.8, W * 0.12));
+    plane.userData.vaporL.position.set( W * 0.52, 0, -L * 0.02);
+    plane.userData.vaporR.position.set(-W * 0.52, 0, -L * 0.02);
+    plane.userData.vaporL.scale.setScalar(Math.max(0.9, W * 0.12));
+    plane.userData.vaporR.scale.setScalar(Math.max(0.9, W * 0.12));
   }
 
   if (plane.userData.dust) {
-    plane.userData.dust.position.set(0, gearY + 0.02, L * 0.08);
-    plane.userData.dust.scale.set(Math.max(1.0, W * 0.18), 1, Math.max(1.0, L * 0.06));
+    plane.userData.dust.position.set(0, gearY + 0.02, L * 0.10);
+    plane.userData.dust.scale.set(Math.max(1.2, W * 0.18), 1, Math.max(1.2, L * 0.06));
   }
 }
 
@@ -1182,7 +1197,7 @@ function resetPlane() {
 }
 
 /* =========================
-   World (includes TRI GRID ON HILLS)
+   World (tri grid on hills + wider runway + more runway detail)
 ========================= */
 function createWorld() {
   const size = WORLD.size;
@@ -1229,40 +1244,68 @@ function createWorld() {
 
   const triGrid = new THREE.Mesh(groundGeo, triMat);
   triGrid.rotation.x = -Math.PI/2;
-  triGrid.position.y = WORLD.groundY + 0.02; // slight lift above the terrain mesh
+  triGrid.position.y = WORLD.groundY + 0.02;
   triGrid.renderOrder = 3;
   scene.add(triGrid);
 
-  // runway
-  const runway = new THREE.Mesh(new THREE.PlaneGeometry(60, 3500), new THREE.MeshStandardMaterial({
-    color: 0x222428, roughness: 0.8, metalness: 0.1
-  }));
+  // runway (2x visual width)
+  const runway = new THREE.Mesh(
+    new THREE.PlaneGeometry(RUNWAY_VISUAL_WIDTH, RUNWAY_VISUAL_LENGTH),
+    new THREE.MeshStandardMaterial({ color: 0x222428, roughness: 0.82, metalness: 0.08 })
+  );
   runway.rotation.x = -Math.PI/2;
   runway.position.y = WORLD.runwayY;
   runway.receiveShadow = true;
   runway.castShadow = true;
   scene.add(runway);
 
-  // runway markings
+  // runway shoulders for extra detail
+  const shoulderMat = new THREE.MeshStandardMaterial({ color: 0x2a2d33, roughness: 0.9, metalness: 0.03 });
+  const shoulderW = 18;
+  const leftShoulder = new THREE.Mesh(new THREE.PlaneGeometry(shoulderW, RUNWAY_VISUAL_LENGTH), shoulderMat);
+  leftShoulder.rotation.x = -Math.PI/2;
+  leftShoulder.position.set(-(RUNWAY_VISUAL_WIDTH/2 + shoulderW/2), WORLD.runwayY + 0.01, 0);
+  scene.add(leftShoulder);
+  const rightShoulder = leftShoulder.clone();
+  rightShoulder.position.x = (RUNWAY_VISUAL_WIDTH/2 + shoulderW/2);
+  scene.add(rightShoulder);
+
+  // runway centerline markings
   const lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-  for (let z = -1600; z <= 1600; z += 200) {
-    const mark = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 40), lineMat);
+  for (let z = -1600; z <= 1600; z += 180) {
+    const mark = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 55), lineMat);
     mark.rotation.x = -Math.PI/2;
     mark.position.set(0, WORLD.runwayY + 0.05, z);
     scene.add(mark);
   }
+
+  // threshold bars (simple)
+  const threshMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  const barW = 6.5, barL = 26;
+  for (let i = -3; i <= 3; i++) {
+    if (i === 0) continue;
+    const bar = new THREE.Mesh(new THREE.PlaneGeometry(barW, barL), threshMat);
+    bar.rotation.x = -Math.PI/2;
+    bar.position.set(i * 9.5, WORLD.runwayY + 0.05, -RUNWAY_VISUAL_LENGTH/2 + 110);
+    scene.add(bar);
+
+    const bar2 = bar.clone();
+    bar2.position.z = RUNWAY_VISUAL_LENGTH/2 - 110;
+    scene.add(bar2);
+  }
+
+  // edge lines
   const edgeMat = new THREE.MeshBasicMaterial({ color: 0xe0e0e0 });
-  const leftEdge = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 3500), edgeMat);
+  const leftEdge = new THREE.Mesh(new THREE.PlaneGeometry(1.8, RUNWAY_VISUAL_LENGTH), edgeMat);
   leftEdge.rotation.x = -Math.PI/2;
-  leftEdge.position.set(-29.5, WORLD.runwayY + 0.04, 0);
+  leftEdge.position.set(-(RUNWAY_VISUAL_WIDTH/2 - 1.2), WORLD.runwayY + 0.04, 0);
   scene.add(leftEdge);
   const rightEdge = leftEdge.clone();
-  rightEdge.position.x = 29.5;
+  rightEdge.position.x = (RUNWAY_VISUAL_WIDTH/2 - 1.2);
   scene.add(rightEdge);
 
   // trees
   const treeCount = 520;
-
   const trunkGeo = new THREE.CylinderGeometry(0.5, 0.7, 6, 6);
   const trunkMat = new THREE.MeshLambertMaterial({ color: 0x4a3018 });
 
@@ -1331,7 +1374,6 @@ function onResize() {
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
 }
-
 function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.1);
