@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <title>3D Flight Demo (External GLB)</title>
+  <title>3D Flight Demo (Procedural Kitbash Jet)</title>
   <style>
     body { margin: 0; overflow: hidden; background-color: #87CEEB; font-family: 'Courier New', Courier, monospace; touch-action: none; }
     #canvas-container { width: 100vw; height: 100vh; display: block; }
@@ -41,7 +41,7 @@
       max-width: min(560px, calc(100vw - 40px));
     }
     #overlay-msg { display: none; font-size: 22px; cursor: pointer; }
-    #start-screen { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+    #start-screen { display: flex; flex-direction: column; align-items: center; gap: 10px; cursor: default; }
 
     h1 { margin: 0 0 10px 0; font-size: 28px; text-transform: uppercase; color: #87CEEB; }
     p { margin: 5px 0; color: #ddd; }
@@ -97,9 +97,8 @@
     }
   </style>
 
-  <!-- Three.js + GLTFLoader (CDN, no local extra files) -->
+  <!-- Three.js (CDN) -->
   <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
-  <script src="https://unpkg.com/three@0.160.0/examples/js/loaders/GLTFLoader.js"></script>
 </head>
 
 <body>
@@ -127,15 +126,15 @@
   <i>Hold Down Arrow at 110kts to Fly</i>
 </div>
 
-<div id="start-screen" onclick="startGame()">
+<div id="start-screen">
   <h1>3D FLIGHT DEMO</h1>
-  <p id="load-status" style="color:#ffd;">Loading model…</p>
+  <p id="load-status" style="color:#ffd;">Building procedural jet…</p>
   <p>Use <span class="key">W</span> to Throttle Up</p>
   <p>Hold <span class="key">A</span> for Afterburner</p>
   <p>Hold <span class="key">Space</span> for Air Brake / Brakes</p>
   <p>Use <span class="key">G</span> for Landing Gear</p>
   <p>Use <span class="key">Arrows</span> to Steer/Fly</p>
-  <button id="start-btn" class="btn-start" disabled>LOADING…</button>
+  <button id="start-btn" class="btn-start" disabled onclick="startGame()">LOADING…</button>
 </div>
 
 <div id="overlay-msg" onclick="resetPlane()">CRASH<br>Click to Reset</div>
@@ -151,13 +150,8 @@
 
 <script>
 /* =========================
-   MODEL CONFIG
+   STATUS
 ========================= */
-const MODEL_URL = "./f22_raptor_low_poly_gray.glb"; // IMPORTANT: "./" for GitHub Pages
-const TARGET_LENGTH_M = 19.0;                       // desired jet size
-const MODEL_ROT_Y = Math.PI;                        // if backwards, set to 0
-
-let modelLoaded = false;
 function setLoadStatus(msg, ready=false) {
   const el = document.getElementById("load-status");
   const btn = document.getElementById("start-btn");
@@ -181,7 +175,7 @@ let input = { pitch: 0, roll: 0, yaw: 0, throttle: 0 };
 let keys = {};
 
 /* =========================
-   Model dims (auto from bbox)
+   Model dims (auto)
 ========================= */
 const MODEL_DIM = {
   ready: false,
@@ -387,10 +381,7 @@ function updateGearAnimation(dt) {
    Start / Init
 ========================= */
 function startGame() {
-  if (!modelLoaded || !MODEL_DIM.ready) {
-    setLoadStatus("Still loading model… (check file name + same folder)", false);
-    return;
-  }
+  if (!MODEL_DIM.ready) return;
   document.getElementById('start-screen').style.display = 'none';
   gameActive = true;
   resetPlane();
@@ -514,12 +505,14 @@ function init() {
   plane = createAircraftContainer();
   scene.add(plane);
 
-  loadAndAttachGLBModel();
+  // Build your procedural “kitbash” jet:
+  buildKitbashJet();
+  setLoadStatus("Ready ✅ Click Start", true);
 
   window.addEventListener('resize', onResize);
   document.addEventListener('keydown', e => {
     keys[e.code] = true;
-    if (e.code === 'KeyG') toggleGear();
+    if (gameActive && e.code === 'KeyG') toggleGear();
   });
   document.addEventListener('keyup', e => keys[e.code] = false);
 
@@ -602,98 +595,174 @@ function createAircraftContainer() {
 }
 
 /* =========================
-   Load GLB (robust)
+   PROCEDURAL KITBASH JET
+   - F-16 fuselage + wings
+   - F-22 nose/cockpit vibe
+   - F-86 tail section vibe
 ========================= */
-function loadAndAttachGLBModel() {
-  modelLoaded = false;
-  MODEL_DIM.ready = false;
+const TARGET_LENGTH_M = 19.0;
 
+function buildKitbashJet() {
   const mg = plane.userData.modelGroup;
   mg.clear();
 
-  // IMPORTANT: if loader didn't load, don't silently hang
-  if (!window.THREE || !THREE.GLTFLoader) {
-    console.error("GLTFLoader missing. THREE:", window.THREE);
-    setLoadStatus("GLTFLoader failed to load. Refresh (Ctrl+Shift+R).", false);
-    return;
-  }
+  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x9aa0a6, roughness: 0.65, metalness: 0.25 });
+  const darkMat = new THREE.MeshStandardMaterial({ color: 0x2b2f36, roughness: 0.85, metalness: 0.05 });
+  const canopyMat = new THREE.MeshStandardMaterial({
+    color: 0x88c7ff, roughness: 0.1, metalness: 0.0, transparent: true, opacity: 0.35
+  });
 
-  setLoadStatus("Loading model: " + MODEL_URL, false);
+  const g = new THREE.Group();
 
-  const loader = new THREE.GLTFLoader();
+  // F-16-ish fuselage (slender tube)
+  const fuseLen = 18.5;
+  const fuseRFront = 0.65;
+  const fuseRRear  = 0.78;
 
-  loader.load(
-    MODEL_URL,
-    (gltf) => {
-      const model = gltf.scene || (gltf.scenes && gltf.scenes[0]);
-      if (!model) {
-        setLoadStatus("Loaded, but no scene found inside GLB", false);
-        return;
-      }
-
-      model.rotation.set(0, MODEL_ROT_Y, 0);
-
-      model.traverse((o) => {
-        if (o.isMesh) {
-          o.castShadow = true;
-          o.receiveShadow = true;
-        }
-      });
-
-      // scale to target length
-      model.updateMatrixWorld(true);
-      let box = new THREE.Box3().setFromObject(model);
-      const size = new THREE.Vector3();
-      box.getSize(size);
-
-      const currentLen = Math.max(0.0001, Math.max(size.x, size.z));
-      const s = TARGET_LENGTH_M / currentLen;
-      model.scale.setScalar(s);
-
-      // center and sit on ground
-      model.updateMatrixWorld(true);
-      box = new THREE.Box3().setFromObject(model);
-      const center = new THREE.Vector3();
-      box.getCenter(center);
-      model.position.sub(center);
-
-      model.updateMatrixWorld(true);
-      box = new THREE.Box3().setFromObject(model);
-      model.position.y -= box.min.y;
-
-      mg.add(model);
-
-      // update MODEL_DIM
-      plane.updateMatrixWorld(true);
-      const bbox = new THREE.Box3().setFromObject(mg);
-      const finalSize = new THREE.Vector3();
-      bbox.getSize(finalSize);
-
-      MODEL_DIM.ready = true;
-      MODEL_DIM.size.copy(finalSize);
-      MODEL_DIM.bellyHeight    = Math.max(0.35, finalSize.y * 0.22);
-      MODEL_DIM.gearHeightFull = Math.max(0.95, finalSize.y * 0.55);
-
-      rebuildAircraftAnchors();
-      updateGearAnimation(0);
-      resetPlane();
-
-      modelLoaded = true;
-      setLoadStatus("Model loaded ✅ Click to Start", true);
-    },
-    (xhr) => {
-      if (!xhr || !xhr.total) {
-        setLoadStatus("Loading model…", false);
-        return;
-      }
-      const pct = Math.round((xhr.loaded / xhr.total) * 100);
-      setLoadStatus(`Loading model… ${pct}%`, false);
-    },
-    (err) => {
-      console.error("GLB load error:", err);
-      setLoadStatus("FAILED: 404/blocked. Check file name + same folder.", false);
-    }
+  const fuselage = new THREE.Mesh(
+    new THREE.CylinderGeometry(fuseRFront, fuseRRear, fuseLen, 28, 1, false),
+    bodyMat
   );
+  fuselage.rotation.x = Math.PI / 2; // cylinder Y -> Z
+  fuselage.position.set(0, 1.05, 0);
+  g.add(fuselage);
+
+  // intake-ish bulges (simple hint of F-16)
+  const intakeL = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.52, 1.75), darkMat);
+  const intakeR = intakeL.clone();
+  intakeL.position.set(0.92, 0.95, -0.85);
+  intakeR.position.set(-0.92, 0.95, -0.85);
+  g.add(intakeL, intakeR);
+
+  // exhaust
+  const exhaust = new THREE.Mesh(new THREE.CylinderGeometry(0.46, 0.62, 1.85, 20), darkMat);
+  exhaust.rotation.x = Math.PI / 2;
+  exhaust.position.set(0, 1.0, (fuseLen * 0.5) - 0.55);
+  g.add(exhaust);
+
+  // F-22-ish nose (sharper cone) + chines
+  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.60, 2.65, 30), bodyMat);
+  nose.rotation.x = -Math.PI / 2; // cone -> -Z
+  nose.position.set(0, 1.05, -(fuseLen * 0.5) - 0.85);
+  g.add(nose);
+
+  // chines / faceted vibe
+  const chineGeo = new THREE.BoxGeometry(0.20, 0.09, 2.3);
+  const chineL = new THREE.Mesh(chineGeo, bodyMat);
+  const chineR = chineL.clone();
+  chineL.position.set(0.46, 1.12, -(fuseLen * 0.5) + 0.15);
+  chineR.position.set(-0.46, 1.12, -(fuseLen * 0.5) + 0.15);
+  chineL.rotation.y = 0.14;
+  chineR.rotation.y = -0.14;
+  g.add(chineL, chineR);
+
+  // cockpit canopy (bubble)
+  const canopy = new THREE.Mesh(new THREE.SphereGeometry(0.68, 22, 16), canopyMat);
+  canopy.scale.set(1.30, 0.72, 1.65);
+  canopy.position.set(0, 1.58, -(fuseLen * 0.5) + 2.75);
+  g.add(canopy);
+
+  // F-16-ish wings (trapezoid swept)
+  function makeWing(sign = 1) {
+    const shape = new THREE.Shape();
+    // root front, swept LE, tapered tip, trailing back to root
+    shape.moveTo(0.0, 0.0);
+    shape.lineTo(4.35, -1.28);
+    shape.lineTo(3.55, -4.35);
+    shape.lineTo(0.65, -3.25);
+    shape.lineTo(0.0, 0.0);
+
+    const geo = new THREE.ShapeGeometry(shape);
+    geo.rotateX(-Math.PI / 2);        // into XZ plane
+    geo.rotateZ(sign * Math.PI / 2);  // mirror
+
+    const top = new THREE.Mesh(geo, bodyMat);
+    top.position.set(sign * 0.26, 1.05, 0.10);
+
+    const bot = new THREE.Mesh(geo, bodyMat);
+    bot.position.copy(top.position);
+    bot.position.y -= 0.06; // fake thickness
+
+    return [top, bot];
+  }
+  g.add(...makeWing(1), ...makeWing(-1));
+
+  // F-86-ish tail section (swept tailplanes + fin)
+  function makeTailplane(sign = 1) {
+    const shape = new THREE.Shape();
+    shape.moveTo(0.0, 0.0);
+    shape.lineTo(2.35, -0.78);
+    shape.lineTo(1.82, -2.10);
+    shape.lineTo(0.25, -1.55);
+    shape.lineTo(0.0, 0.0);
+
+    const geo = new THREE.ShapeGeometry(shape);
+    geo.rotateX(-Math.PI / 2);
+    geo.rotateZ(sign * Math.PI / 2);
+
+    const tp = new THREE.Mesh(geo, bodyMat);
+    tp.position.set(sign * 0.16, 1.06, (fuseLen * 0.5) - 2.75);
+
+    const tp2 = new THREE.Mesh(geo, bodyMat);
+    tp2.position.copy(tp.position);
+    tp2.position.y -= 0.05;
+
+    return [tp, tp2];
+  }
+  g.add(...makeTailplane(1), ...makeTailplane(-1));
+
+  // vertical fin (swept)
+  const finShape = new THREE.Shape();
+  finShape.moveTo(0.0, 0.0);
+  finShape.lineTo(0.95, 0.22);
+  finShape.lineTo(1.70, 2.95);
+  finShape.lineTo(0.32, 3.55);
+  finShape.lineTo(0.0, 0.0);
+
+  const finGeo = new THREE.ShapeGeometry(finShape);
+  finGeo.rotateY(Math.PI / 2); // XY -> YZ plane
+  const fin = new THREE.Mesh(finGeo, bodyMat);
+  fin.position.set(0, 1.18, (fuseLen * 0.5) - 2.35);
+  g.add(fin);
+
+  // Normalize: scale to TARGET_LENGTH_M, center, sit on ground
+  g.updateMatrixWorld(true);
+
+  let box = new THREE.Box3().setFromObject(g);
+  const size = new THREE.Vector3();
+  box.getSize(size);
+
+  const currentLen = Math.max(0.0001, size.z);
+  const s = TARGET_LENGTH_M / currentLen;
+  g.scale.setScalar(s);
+
+  g.updateMatrixWorld(true);
+  box = new THREE.Box3().setFromObject(g);
+
+  const center = new THREE.Vector3();
+  box.getCenter(center);
+  g.position.sub(center);
+
+  g.updateMatrixWorld(true);
+  box = new THREE.Box3().setFromObject(g);
+  g.position.y -= box.min.y;
+
+  mg.add(g);
+
+  // Update MODEL_DIM
+  plane.updateMatrixWorld(true);
+  const bbox = new THREE.Box3().setFromObject(mg);
+  const finalSize = new THREE.Vector3();
+  bbox.getSize(finalSize);
+
+  MODEL_DIM.ready = true;
+  MODEL_DIM.size.copy(finalSize);
+  MODEL_DIM.bellyHeight    = Math.max(0.35, finalSize.y * 0.22);
+  MODEL_DIM.gearHeightFull = Math.max(0.95, finalSize.y * 0.55);
+
+  rebuildAircraftAnchors();
+  updateGearAnimation(0);
+  resetPlane();
 }
 
 function rebuildAircraftAnchors() {
@@ -752,7 +821,6 @@ function rebuildAircraftAnchors() {
 
 /* =========================
    Inputs / Physics / HUD / Camera / Reset
-   (unchanged from your version)
 ========================= */
 function updateInputs() {
   if (!gameActive) return;
@@ -846,7 +914,6 @@ function updatePhysics(dt) {
     .add(gravityForce);
 
   const groundH = getGroundHeight(sim.pos.x, sim.pos.z);
-  const wasOnGround = sim.onGround;
   let suspensionTorque = 0;
 
   const gearEffect = sim.gearPos;
