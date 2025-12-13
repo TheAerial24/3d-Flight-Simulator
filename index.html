@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <title>3D Flight Demo (Procedural Kitbash Jet)</title>
+  <title>3D Flight Demo (Procedural Fighter Jet)</title>
   <style>
     body { margin: 0; overflow: hidden; background-color: #87CEEB; font-family: 'Courier New', Courier, monospace; touch-action: none; }
     #canvas-container { width: 100vw; height: 100vh; display: block; }
@@ -128,7 +128,7 @@
 
 <div id="start-screen">
   <h1>3D FLIGHT DEMO</h1>
-  <p id="load-status" style="color:#ffd;">Building procedural jet…</p>
+  <p id="load-status" style="color:#ffd;">Building fighter jet…</p>
   <p>Use <span class="key">W</span> to Throttle Up</p>
   <p>Hold <span class="key">A</span> for Afterburner</p>
   <p>Hold <span class="key">Space</span> for Air Brake / Brakes</p>
@@ -505,8 +505,8 @@ function init() {
   plane = createAircraftContainer();
   scene.add(plane);
 
-  // Build your procedural “kitbash” jet:
-  buildKitbashJet();
+  // Build procedural fighter jet
+  buildFighterJet();
   setLoadStatus("Ready ✅ Click Start", true);
 
   window.addEventListener('resize', onResize);
@@ -595,137 +595,93 @@ function createAircraftContainer() {
 }
 
 /* =========================
-   PROCEDURAL KITBASH JET
-   - F-16 fuselage + wings
-   - F-22 nose/cockpit vibe
-   - F-86 tail section vibe
+   PROCEDURAL FIGHTER JET (SOLID)
 ========================= */
-const TARGET_LENGTH_M = 19.0;
+const TARGET_LENGTH_M = 18.0;
 
-function buildKitbashJet() {
+function buildFighterJet() {
   const mg = plane.userData.modelGroup;
   mg.clear();
 
-  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x9aa0a6, roughness: 0.65, metalness: 0.25 });
-  const darkMat = new THREE.MeshStandardMaterial({ color: 0x2b2f36, roughness: 0.85, metalness: 0.05 });
+  const bodyMat   = new THREE.MeshStandardMaterial({ color: 0x9aa0a6, roughness: 0.65, metalness: 0.25 });
+  const darkMat   = new THREE.MeshStandardMaterial({ color: 0x2b2f36, roughness: 0.85, metalness: 0.05 });
   const canopyMat = new THREE.MeshStandardMaterial({
-    color: 0x88c7ff, roughness: 0.1, metalness: 0.0, transparent: true, opacity: 0.35
+    color: 0x88c7ff, roughness: 0.12, metalness: 0.0, transparent: true, opacity: 0.35
   });
 
   const g = new THREE.Group();
 
-  // F-16-ish fuselage (slender tube)
-  const fuseLen = 18.5;
-  const fuseRFront = 0.65;
-  const fuseRRear  = 0.78;
+  // Forward = -Z
+  const fuseLen = 16.0;
+  const y0 = 1.05;
 
   const fuselage = new THREE.Mesh(
-    new THREE.CylinderGeometry(fuseRFront, fuseRRear, fuseLen, 28, 1, false),
+    new THREE.CylinderGeometry(0.60, 0.85, fuseLen, 24, 1, false),
     bodyMat
   );
-  fuselage.rotation.x = Math.PI / 2; // cylinder Y -> Z
-  fuselage.position.set(0, 1.05, 0);
+  fuselage.rotation.x = Math.PI / 2;
+  fuselage.position.set(0, y0, 0);
+  fuselage.castShadow = fuselage.receiveShadow = true;
   g.add(fuselage);
 
-  // intake-ish bulges (simple hint of F-16)
-  const intakeL = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.52, 1.75), darkMat);
-  const intakeR = intakeL.clone();
-  intakeL.position.set(0.92, 0.95, -0.85);
-  intakeR.position.set(-0.92, 0.95, -0.85);
-  g.add(intakeL, intakeR);
-
-  // exhaust
-  const exhaust = new THREE.Mesh(new THREE.CylinderGeometry(0.46, 0.62, 1.85, 20), darkMat);
-  exhaust.rotation.x = Math.PI / 2;
-  exhaust.position.set(0, 1.0, (fuseLen * 0.5) - 0.55);
-  g.add(exhaust);
-
-  // F-22-ish nose (sharper cone) + chines
-  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.60, 2.65, 30), bodyMat);
-  nose.rotation.x = -Math.PI / 2; // cone -> -Z
-  nose.position.set(0, 1.05, -(fuseLen * 0.5) - 0.85);
+  const nose = new THREE.Mesh(
+    new THREE.ConeGeometry(0.62, 2.8, 26),
+    bodyMat
+  );
+  nose.rotation.x = -Math.PI / 2;
+  nose.position.set(0, y0, -(fuseLen * 0.5) - 1.2);
+  nose.castShadow = nose.receiveShadow = true;
   g.add(nose);
 
-  // chines / faceted vibe
-  const chineGeo = new THREE.BoxGeometry(0.20, 0.09, 2.3);
-  const chineL = new THREE.Mesh(chineGeo, bodyMat);
-  const chineR = chineL.clone();
-  chineL.position.set(0.46, 1.12, -(fuseLen * 0.5) + 0.15);
-  chineR.position.set(-0.46, 1.12, -(fuseLen * 0.5) + 0.15);
-  chineL.rotation.y = 0.14;
-  chineR.rotation.y = -0.14;
-  g.add(chineL, chineR);
-
-  // cockpit canopy (bubble)
-  const canopy = new THREE.Mesh(new THREE.SphereGeometry(0.68, 22, 16), canopyMat);
-  canopy.scale.set(1.30, 0.72, 1.65);
-  canopy.position.set(0, 1.58, -(fuseLen * 0.5) + 2.75);
+  const canopy = new THREE.Mesh(new THREE.SphereGeometry(0.75, 24, 16), canopyMat);
+  canopy.scale.set(1.20, 0.70, 1.55);
+  canopy.position.set(0, y0 + 0.55, -(fuseLen * 0.5) + 4.3);
   g.add(canopy);
 
-  // F-16-ish wings (trapezoid swept)
-  function makeWing(sign = 1) {
-    const shape = new THREE.Shape();
-    // root front, swept LE, tapered tip, trailing back to root
-    shape.moveTo(0.0, 0.0);
-    shape.lineTo(4.35, -1.28);
-    shape.lineTo(3.55, -4.35);
-    shape.lineTo(0.65, -3.25);
-    shape.lineTo(0.0, 0.0);
+  const intakeGeo = new THREE.BoxGeometry(0.85, 0.55, 1.8);
+  const intakeL = new THREE.Mesh(intakeGeo, darkMat);
+  const intakeR = new THREE.Mesh(intakeGeo, darkMat);
+  intakeL.position.set(0.95, y0 - 0.05, -2.0);
+  intakeR.position.set(-0.95, y0 - 0.05, -2.0);
+  g.add(intakeL, intakeR);
 
-    const geo = new THREE.ShapeGeometry(shape);
-    geo.rotateX(-Math.PI / 2);        // into XZ plane
-    geo.rotateZ(sign * Math.PI / 2);  // mirror
+  const wingGeo = new THREE.BoxGeometry(5.8, 0.14, 2.6);
+  const wingL = new THREE.Mesh(wingGeo, bodyMat);
+  const wingR = new THREE.Mesh(wingGeo, bodyMat);
 
-    const top = new THREE.Mesh(geo, bodyMat);
-    top.position.set(sign * 0.26, 1.05, 0.10);
+  wingL.position.set( 2.9, y0 - 0.10, -0.8);
+  wingR.position.set(-2.9, y0 - 0.10, -0.8);
 
-    const bot = new THREE.Mesh(geo, bodyMat);
-    bot.position.copy(top.position);
-    bot.position.y -= 0.06; // fake thickness
+  wingL.rotation.y =  0.28;
+  wingR.rotation.y = -0.28;
 
-    return [top, bot];
-  }
-  g.add(...makeWing(1), ...makeWing(-1));
+  wingL.castShadow = wingR.castShadow = true;
+  wingL.receiveShadow = wingR.receiveShadow = true;
+  g.add(wingL, wingR);
 
-  // F-86-ish tail section (swept tailplanes + fin)
-  function makeTailplane(sign = 1) {
-    const shape = new THREE.Shape();
-    shape.moveTo(0.0, 0.0);
-    shape.lineTo(2.35, -0.78);
-    shape.lineTo(1.82, -2.10);
-    shape.lineTo(0.25, -1.55);
-    shape.lineTo(0.0, 0.0);
+  const tailGeo = new THREE.BoxGeometry(2.6, 0.12, 1.6);
+  const tailL = new THREE.Mesh(tailGeo, bodyMat);
+  const tailR = new THREE.Mesh(tailGeo, bodyMat);
 
-    const geo = new THREE.ShapeGeometry(shape);
-    geo.rotateX(-Math.PI / 2);
-    geo.rotateZ(sign * Math.PI / 2);
+  tailL.position.set( 1.55, y0 + 0.05, (fuseLen * 0.5) - 3.0);
+  tailR.position.set(-1.55, y0 + 0.05, (fuseLen * 0.5) - 3.0);
 
-    const tp = new THREE.Mesh(geo, bodyMat);
-    tp.position.set(sign * 0.16, 1.06, (fuseLen * 0.5) - 2.75);
+  tailL.rotation.y =  0.22;
+  tailR.rotation.y = -0.22;
 
-    const tp2 = new THREE.Mesh(geo, bodyMat);
-    tp2.position.copy(tp.position);
-    tp2.position.y -= 0.05;
+  g.add(tailL, tailR);
 
-    return [tp, tp2];
-  }
-  g.add(...makeTailplane(1), ...makeTailplane(-1));
-
-  // vertical fin (swept)
-  const finShape = new THREE.Shape();
-  finShape.moveTo(0.0, 0.0);
-  finShape.lineTo(0.95, 0.22);
-  finShape.lineTo(1.70, 2.95);
-  finShape.lineTo(0.32, 3.55);
-  finShape.lineTo(0.0, 0.0);
-
-  const finGeo = new THREE.ShapeGeometry(finShape);
-  finGeo.rotateY(Math.PI / 2); // XY -> YZ plane
-  const fin = new THREE.Mesh(finGeo, bodyMat);
-  fin.position.set(0, 1.18, (fuseLen * 0.5) - 2.35);
+  const fin = new THREE.Mesh(new THREE.BoxGeometry(0.18, 2.1, 2.2), bodyMat);
+  fin.position.set(0, y0 + 1.1, (fuseLen * 0.5) - 3.5);
+  fin.rotation.y = 0.10;
   g.add(fin);
 
-  // Normalize: scale to TARGET_LENGTH_M, center, sit on ground
+  const exhaust = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.65, 2.0, 18), darkMat);
+  exhaust.rotation.x = Math.PI / 2;
+  exhaust.position.set(0, y0 - 0.05, (fuseLen * 0.5) + 0.7);
+  g.add(exhaust);
+
+  // Normalize
   g.updateMatrixWorld(true);
 
   let box = new THREE.Box3().setFromObject(g);
@@ -749,7 +705,6 @@ function buildKitbashJet() {
 
   mg.add(g);
 
-  // Update MODEL_DIM
   plane.updateMatrixWorld(true);
   const bbox = new THREE.Box3().setFromObject(mg);
   const finalSize = new THREE.Vector3();
