@@ -227,7 +227,7 @@ let input = { pitch: 0, roll: 0, yaw: 0, throttle: 0 };
 let keys = {};
 
 /* =========================
-   World & Terrain (mountains + valley + triangle grid)
+   World & Terrain
 ========================= */
 const WORLD = { size: 40000, segments: 140, runwayY: 0.2, groundY: -0.05 };
 const RUNWAY = { halfW: 80, halfL: 2100 };
@@ -392,17 +392,8 @@ function togglePause() {
 }
 
 /* =========================
-   Flares (EXACT flare demo logic, deployed with F)
+   Shared Soft Texture (also used for dust)
 ========================= */
-const FLARE_COOLDOWN = 100; // ms between flares in a burst
-const FLARE_LIFETIME = 5.0; // seconds
-const SMOKE_RATE = 0.05;
-
-let flares = [];
-let particles = [];
-let lastFlareTime = 0;
-let flareSideToggle = 1;
-
 function createSoftTexture() {
   const canvas = document.createElement('canvas');
   canvas.width = 64;
@@ -419,11 +410,114 @@ function createSoftTexture() {
 
   return new THREE.CanvasTexture(canvas);
 }
+const sharedSoftTexture = createSoftTexture();
 
-const sharedTexture = createSoftTexture();
+/* =========================
+   Touchdown Dust (improved: multi-puff sprites, not a flat ugly plane)
+========================= */
+const DUST = {
+  rate: 0.04,         // seconds between rolling puffs
+  baseLife: 0.9,
+  lifeRand: 0.7
+};
+let dustParticles = [];
+let lastDustTime = 0;
+
+function spawnDustPuff(worldPos, intensity = 1.0, driftDir = null) {
+  const mat = new THREE.SpriteMaterial({
+    map: sharedSoftTexture,
+    color: 0xc9c3bb,            // runway dust / light gray-brown
+    transparent: true,
+    opacity: 0.55,
+    depthWrite: false,
+    blending: THREE.NormalBlending
+  });
+
+  const spr = new THREE.Sprite(mat);
+  spr.position.copy(worldPos);
+
+  // keep it near the ground
+  spr.position.y += 0.08;
+
+  // start size
+  const s = (1.8 + Math.random() * 2.2) * (0.55 + 0.75 * intensity);
+  spr.scale.set(s, s, s);
+
+  // movement: mostly backward (relative to motion), slight upward and random spread
+  const v = new THREE.Vector3(
+    (Math.random() - 0.5) * 3.0,
+    0.8 + Math.random() * 1.1,
+    (Math.random() - 0.5) * 3.0
+  );
+
+  if (driftDir && driftDir.lengthSq() > 0.001) {
+    const d = driftDir.clone().normalize();
+    v.add(d.multiplyScalar(6.0 * (0.35 + 0.85 * intensity)));
+  }
+
+  dustParticles.push({
+    mesh: spr,
+    age: 0,
+    life: DUST.baseLife + Math.random() * DUST.lifeRand,
+    vel: v,
+    intensity
+  });
+
+  scene.add(spr);
+}
+
+function updateDust(dt) {
+  for (let i = dustParticles.length - 1; i >= 0; i--) {
+    const p = dustParticles[i];
+    p.age += dt;
+
+    // drift and settle
+    p.mesh.position.addScaledVector(p.vel, dt);
+    p.vel.multiplyScalar(1.0 - 1.25 * dt);
+    p.vel.y -= 1.6 * dt;
+
+    // expand quickly early, then slow
+    const expand = 1.0 + dt * (1.9 - 0.9 * (p.age / p.life));
+    p.mesh.scale.multiplyScalar(expand);
+
+    // fade: hold briefly then fade out
+    const t = p.age / p.life;
+    let a = 1.0;
+    if (t < 0.18) a = THREE.MathUtils.lerp(0.0, 1.0, t / 0.18);
+    else if (t > 0.55) a = Math.max(0, 1 - ((t - 0.55) / 0.45));
+    p.mesh.material.opacity = 0.55 * a;
+
+    if (p.age > p.life) {
+      scene.remove(p.mesh);
+      p.mesh.material.dispose();
+      dustParticles.splice(i, 1);
+    }
+  }
+}
+
+function clearDust() {
+  for (const p of dustParticles) {
+    scene.remove(p.mesh);
+    if (p.mesh?.material) p.mesh.material.dispose();
+  }
+  dustParticles.length = 0;
+  lastDustTime = 0;
+}
+
+/* =========================
+   Flares (same as your flare demo)
+========================= */
+const FLARE_COOLDOWN = 100; // ms between flares in a burst
+const FLARE_LIFETIME = 5.0; // seconds
+const SMOKE_RATE = 0.05;
+
+let flares = [];
+let particles = [];
+let lastFlareTime = 0;
+let flareSideToggle = 1;
 
 const smokeMaterial = new THREE.SpriteMaterial({
-  map: sharedTexture,
+  map: sharedSoftTexture,
   color: 0xffffff,
   transparent: true,
   opacity: 1.0,
@@ -432,7 +526,7 @@ const smokeMaterial = new THREE.SpriteMaterial({
 });
 
 const glowMaterial = new THREE.SpriteMaterial({
-  map: sharedTexture,
+  map: sharedSoftTexture,
   color: 0xffaa00,
   transparent: true,
   opacity: 1.0,
@@ -451,7 +545,6 @@ function spawnFlare() {
   glare.scale.set(2, 2, 1);
   flareMesh.add(glare);
 
-  // Placement (same relative as flare demo; jet forward is -Z here)
   flareMesh.position.copy(plane.position);
   const offset = new THREE.Vector3(0.5 * flareSideToggle, -0.5, 3);
   offset.applyQuaternion(sim.quat);
@@ -459,11 +552,7 @@ function spawnFlare() {
 
   scene.add(flareMesh);
 
-  // Physics: inherit aircraft velocity + eject impulse
   const planeVelocity = sim.vel.clone();
-
-  // Demo ejectDir: (6*side, -4, -2) with +Z forward
-  // Here -Z forward, so "back" is +Z => z=+2
   const ejectDir = new THREE.Vector3(6 * flareSideToggle, -4, 2);
   ejectDir.applyQuaternion(sim.quat);
 
@@ -486,7 +575,6 @@ function updateFlares(dt) {
     f.age += dt;
 
     f.mesh.position.addScaledVector(f.velocity, dt);
-
     f.velocity.y -= 9.8 * dt;
 
     const dragFactor = 0.5 * dt;
@@ -587,6 +675,112 @@ function startGame() {
     stallAudio.loop = true;
     stallAudio.volume = 0.8;
   }
+}
+
+/* =========================
+   Afterburner "realer" look:
+   - shock-diamond shader flames (inner core + outer plume)
+   - nozzle "iris" animation (opens at idle, tightens at AB)
+========================= */
+function makeAfterburnerShader(params) {
+  const uniforms = {
+    uTime: { value: 0 },
+    uIntensity: { value: 0 },
+    uRadius: { value: params.radius || 0.45 },
+    uColorA: { value: new THREE.Color(params.colorA || 0x66c9ff) }, // core
+    uColorB: { value: new THREE.Color(params.colorB || 0xffaa33) }, // hot edges
+    uFreq: { value: params.freq || 10.0 },
+    uSpeed: { value: params.speed || 2.3 },
+    uSoft: { value: params.soft || 0.7 }
+  };
+
+  const mat = new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    uniforms,
+    vertexShader: `
+      varying vec2 vUv;
+      varying vec3 vPos;
+      void main(){
+        vUv = uv;
+        vPos = position;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      varying vec2 vUv;
+      varying vec3 vPos;
+
+      uniform float uTime;
+      uniform float uIntensity;
+      uniform float uRadius;
+      uniform vec3  uColorA;
+      uniform vec3  uColorB;
+      uniform float uFreq;
+      uniform float uSpeed;
+      uniform float uSoft;
+
+      float hash(float n){ return fract(sin(n)*43758.5453); }
+      float noise(vec2 x){
+        vec2 p = floor(x);
+        vec2 f = fract(x);
+        f = f*f*(3.0-2.0*f);
+        float n = p.x + p.y*57.0;
+        float a = hash(n+ 0.0);
+        float b = hash(n+ 1.0);
+        float c = hash(n+57.0);
+        float d = hash(n+58.0);
+        return mix(mix(a,b,f.x), mix(c,d,f.x), f.y);
+      }
+
+      void main(){
+        // axial coordinate 0..1 along length
+        float y = vUv.y;
+
+        // radial fade based on actual geometry radius
+        float r = length(vPos.xy) / max(uRadius, 0.0001);
+        float radial = smoothstep(1.0, 0.0, r);
+
+        // taper down toward the end of the plume
+        float taper = smoothstep(0.02, 0.18, y) * smoothstep(1.0, 0.55, y);
+
+        // shock diamonds: repeated bright nodes along y
+        float phase = y * uFreq - uTime * uSpeed;
+        float diamonds = pow(abs(sin(phase * 3.14159)), 2.2);
+
+        // turbulent flicker / breakup
+        float n = noise(vec2(y*9.0 - uTime*1.2, r*6.0 + uTime*0.7));
+        float flick = mix(0.75, 1.25, n);
+
+        // core vs edge mix
+        float core = pow(radial, 2.2);
+        float edge = pow(radial, 0.7);
+
+        // brightness profile
+        float bright = (0.65*core + 0.35*edge) * taper;
+        bright *= mix(0.55, 1.25, diamonds);
+        bright *= flick;
+        bright *= uIntensity;
+
+        // softer outer
+        bright = pow(bright, uSoft);
+
+        // color ramp (more blue near core, warmer at edge + downstream)
+        float heat = clamp( (1.0 - core) * 0.85 + y * 0.25, 0.0, 1.0 );
+        vec3 col = mix(uColorA, uColorB, heat);
+
+        float alpha = clamp(bright * 1.15, 0.0, 1.0);
+
+        // kill hard edges
+        alpha *= smoothstep(0.0, 0.12, radial) + 0.001;
+
+        gl_FragColor = vec4(col * bright, alpha);
+      }
+    `
+  });
+
+  return mat;
 }
 
 function init() {
@@ -718,7 +912,6 @@ function init() {
   document.addEventListener('keydown', (e) => {
     keys[e.code] = true;
 
-    // prevent toggle spam from key-repeat
     if (e.repeat) return;
 
     if (e.code === 'KeyG') toggleGear();
@@ -769,7 +962,7 @@ function updateInputs() {
 }
 
 /* =========================
-   Gear animation (slow + hide when fully up)
+   Gear animation
 ========================= */
 function updateGearAnimation(dt) {
   if (!plane) return;
@@ -848,18 +1041,45 @@ function updatePhysics(dt) {
   const thrustFactor = Math.max(0.4, 1 - (speed / 350));
   const thrustForce = forward.clone().multiplyScalar(currentThrottle * PHYSICS.maxThrust * thrustFactor * abBoost);
 
-  // Visuals: afterburner flames
-  if (plane && plane.userData.afterburners) {
-    const speedFactor = THREE.MathUtils.clamp(speed / 250, 0, 1.2);
-    plane.userData.afterburners.forEach((ab, idx) => {
-      ab.visible = sim.afterburner;
-      if (!sim.afterburner) return;
-      const flicker = 0.8 + Math.random() * 0.4;
-      const base = (idx === 0) ? 1.0 : 0.6;
-      const s = base * (1.0 + 0.6 * speedFactor) * flicker;
-      if (idx === 0) ab.scale.set(s, s, s * 1.8);
-      else ab.scale.set(s * 0.6, s * 0.6, s * 1.4);
-    });
+  // Visuals: afterburner (updated)
+  if (plane && plane.userData.ab) {
+    const ab = plane.userData.ab;
+
+    // intensity based on afterburner + speed a bit
+    const spdFactor = THREE.MathUtils.clamp(speed / 250, 0, 1.0);
+    const targetIntensity = sim.afterburner ? (0.85 + 0.55 * spdFactor) : 0.0;
+
+    // smooth intensity
+    ab.intensity += (targetIntensity - ab.intensity) * (1 - Math.exp(-7.5 * dt));
+
+    // update shader time/intensity
+    ab.coreMat.uniforms.uTime.value += dt;
+    ab.coreMat.uniforms.uIntensity.value = ab.intensity;
+
+    ab.plumeMat.uniforms.uTime.value += dt;
+    ab.plumeMat.uniforms.uIntensity.value = ab.intensity * 0.85;
+
+    // show/hide meshes
+    const show = ab.intensity > 0.02;
+    ab.coreMesh.visible = show;
+    ab.plumeMesh.visible = show;
+    ab.glow.visible = show;
+
+    // subtle flicker in scale/length
+    const flick = 0.92 + Math.random() * 0.16;
+    const len = (1.0 + 0.75 * spdFactor) * flick;
+    ab.coreMesh.scale.set(1.0, 1.0, len * 1.25);
+    ab.plumeMesh.scale.set(1.0, 1.0, len * 1.55);
+    ab.glow.scale.setScalar(1.0 + 0.25 * spdFactor);
+
+    // nozzle iris: open at idle, tighten at high throttle/AB
+    const thr = input.throttle;
+    const iris = THREE.MathUtils.clamp(1.08 - thr * 0.32 - (sim.afterburner ? 0.22 : 0.0), 0.62, 1.15);
+    ab.nozzle.scale.set(iris, iris, 1.0);
+
+    // nozzle emissive
+    const heat = THREE.MathUtils.clamp(0.15 + thr * 0.55 + (sim.afterburner ? 0.45 : 0.0), 0, 1.2);
+    ab.nozzle.material.emissiveIntensity = 0.25 + 0.75 * heat;
   }
 
   // Visuals: airbrake panels
@@ -911,18 +1131,29 @@ function updatePhysics(dt) {
       if (sim.onGround) {
         if (sim.pos.y < contactY) sim.pos.y = contactY;
 
-        // touchdown dust
-        if (!wasOnGround && plane && plane.userData.dust) {
-          const touchdownSpeed = sim.vel.length();
-          plane.userData.dust.material.opacity = THREE.MathUtils.clamp(touchdownSpeed / 60, 0.2, 0.8);
+        // IMPROVED touchdown dust (multi puffs at wheels)
+        if (!wasOnGround) {
+          const touchdownSpeed = Math.max(0, -sim.vel.y) + sim.vel.length() * 0.02;
+          const intensity = THREE.MathUtils.clamp(touchdownSpeed / 12, 0.35, 1.25);
 
-          const trackDirLocal = sim.vel.clone();
-          trackDirLocal.y = 0;
-          trackDirLocal.applyQuaternion(sim.quat.clone().invert());
-          if (trackDirLocal.lengthSq() > 0.1) {
-            trackDirLocal.normalize();
-            const yaw = Math.atan2(trackDirLocal.x, trackDirLocal.z);
-            plane.userData.dust.rotation.y = yaw;
+          // drift backward along ground velocity
+          const drift = sim.vel.clone(); drift.y = 0;
+          drift.multiplyScalar(-0.08);
+
+          // wheel positions (local) -> world
+          const wheelLocals = [
+            new THREE.Vector3(0, -1.2, -5.0),  // nose area
+            new THREE.Vector3(1.4, -1.2,  1.0), // main L
+            new THREE.Vector3(-1.4, -1.2, 1.0)  // main R
+          ];
+
+          for (const wl of wheelLocals) {
+            const wp = wl.clone().applyQuaternion(sim.quat).add(sim.pos);
+            wp.y = WORLD.runwayY; // keep on runway surface
+            // burst: multiple puffs for nicer look
+            spawnDustPuff(wp, intensity, drift);
+            spawnDustPuff(wp.clone().add(new THREE.Vector3((Math.random()-0.5)*0.6,0,(Math.random()-0.5)*0.6)), intensity*0.85, drift);
+            spawnDustPuff(wp.clone().add(new THREE.Vector3((Math.random()-0.5)*0.6,0,(Math.random()-0.5)*0.6)), intensity*0.75, drift);
           }
         }
 
@@ -939,6 +1170,26 @@ function updatePhysics(dt) {
 
         const sideVel = sim.vel.dot(right);
         totalForce.add(right.clone().multiplyScalar(-sideVel * 2.0 * PHYSICS.mass * dt));
+
+        // rolling/braking dust (subtle)
+        const now = performance.now() * 0.001;
+        if (speed > 25 && (sim.airBrake || Math.abs(sideVel) > 8)) {
+          if ((now - lastDustTime) > DUST.rate) {
+            lastDustTime = now;
+            const skidIntensity = THREE.MathUtils.clamp((speed / 140) + (sim.airBrake ? 0.35 : 0.0) + (Math.abs(sideVel)/45), 0.25, 1.2);
+
+            const drift = sim.vel.clone(); drift.y = 0;
+            drift.multiplyScalar(-0.07);
+
+            const wpL = new THREE.Vector3( 1.4, -1.2, 1.0).applyQuaternion(sim.quat).add(sim.pos);
+            const wpR = new THREE.Vector3(-1.4, -1.2, 1.0).applyQuaternion(sim.quat).add(sim.pos);
+            wpL.y = WORLD.runwayY;
+            wpR.y = WORLD.runwayY;
+
+            spawnDustPuff(wpL, skidIntensity, drift);
+            spawnDustPuff(wpR, skidIntensity, drift);
+          }
+        }
 
         if (speed > 1) sim.angularVel.y += input.yaw * 0.8 * dt;
 
@@ -1028,13 +1279,6 @@ function updatePhysics(dt) {
     }
   }
 
-  // dust fade-out
-  if (plane && plane.userData.dust) {
-    plane.userData.dust.material.opacity *= 0.75;
-    plane.userData.dust.material.opacity -= 0.6 * dt;
-    if (plane.userData.dust.material.opacity < 0) plane.userData.dust.material.opacity = 0;
-  }
-
   // below world => crash
   if (sim.pos.y < -50) {
     sim.crashed = true;
@@ -1113,7 +1357,7 @@ function updateHUD() {
   document.getElementById('throttle-fill').style.height = barHeight + '%';
   document.getElementById('throttle-fill').style.backgroundColor = barColor;
 
-  // stall audio (optional file)
+  // stall audio
   if (stallAudio) {
     if (sim.stalled) {
       if (stallAudio.paused) {
@@ -1163,12 +1407,21 @@ function resetPlane() {
   input.yaw = 0;
 
   clearFlares();
+  clearDust();
+
+  if (plane?.userData?.ab) {
+    plane.userData.ab.intensity = 0;
+    plane.userData.ab.coreMat.uniforms.uIntensity.value = 0;
+    plane.userData.ab.plumeMat.uniforms.uIntensity.value = 0;
+    plane.userData.ab.coreMesh.visible = false;
+    plane.userData.ab.plumeMesh.visible = false;
+    plane.userData.ab.glow.visible = false;
+  }
 
   if (plane) {
     if (plane.userData.gearGroup) plane.userData.gearGroup.visible = true;
     if (plane.userData.airBrakeL) plane.userData.airBrakeL.rotation.y = 0;
     if (plane.userData.airBrakeR) plane.userData.airBrakeR.rotation.y = 0;
-    if (plane.userData.dust) plane.userData.dust.material.opacity = 0;
     updateGearAnimation(0.0001);
   }
 
@@ -1280,34 +1533,79 @@ function createJetMesh() {
   exMesh.castShadow = true;
   root.add(exMesh);
 
-  // Afterburner flames
-  const outerGeo = new THREE.ConeGeometry(0.5, 4.0, 16, 1, true);
-  outerGeo.translate(0, 2.0, 0);
-  outerGeo.rotateX(Math.PI / 2);
-
-  const abOuterMat = new THREE.MeshBasicMaterial({
-    color: 0xffaa33, transparent: true, opacity: 0.55,
-    blending: THREE.AdditiveBlending, depthWrite: false
+  // Nozzle "iris" ring
+  const nozzleMat = new THREE.MeshStandardMaterial({
+    color: 0x2d2e33,
+    metalness: 0.9,
+    roughness: 0.35,
+    emissive: 0x220b00,
+    emissiveIntensity: 0.35
   });
-  const flameOuter = new THREE.Mesh(outerGeo, abOuterMat);
-  flameOuter.position.set(0, 0, 6.6);
-  flameOuter.visible = false;
-  root.add(flameOuter);
+  const nozzleGeo = new THREE.CylinderGeometry(0.72, 0.60, 0.38, 24, 1, true);
+  const nozzle = new THREE.Mesh(nozzleGeo, nozzleMat);
+  nozzle.rotation.x = -Math.PI/2;
+  nozzle.position.set(0, 0, 6.55);
+  nozzle.castShadow = true;
+  root.add(nozzle);
 
-  const innerGeo = new THREE.ConeGeometry(0.3, 3.0, 16, 1, true);
-  innerGeo.translate(0, 1.5, 0);
-  innerGeo.rotateX(Math.PI / 2);
+  // Afterburner flames: core + plume with shock-diamond shader
+  const abGroup = new THREE.Group();
+  abGroup.position.set(0, 0, 6.9);
+  root.add(abGroup);
 
-  const abInnerMat = new THREE.MeshBasicMaterial({
-    color: 0x66c9ff, transparent: true, opacity: 0.8,
-    blending: THREE.AdditiveBlending, depthWrite: false
+  const coreGeo = new THREE.CylinderGeometry(0.16, 0.30, 3.0, 18, 1, true);
+  coreGeo.rotateX(Math.PI/2);
+  coreGeo.translate(0, 0, 1.55);
+
+  const plumeGeo = new THREE.CylinderGeometry(0.33, 0.55, 4.2, 20, 1, true);
+  plumeGeo.rotateX(Math.PI/2);
+  plumeGeo.translate(0, 0, 2.2);
+
+  const coreMat = makeAfterburnerShader({
+    radius: 0.30,
+    colorA: 0x78d9ff,
+    colorB: 0xffb05a,
+    freq: 11.0,
+    speed: 2.8,
+    soft: 0.75
   });
-  const flameInner = new THREE.Mesh(innerGeo, abInnerMat);
-  flameInner.position.set(0, 0, 6.7);
-  flameInner.visible = false;
-  root.add(flameInner);
 
-  root.userData.afterburners = [flameOuter, flameInner];
+  const plumeMat = makeAfterburnerShader({
+    radius: 0.55,
+    colorA: 0x5cc9ff,
+    colorB: 0xff8f2a,
+    freq: 8.0,
+    speed: 2.2,
+    soft: 0.95
+  });
+
+  const coreMesh = new THREE.Mesh(coreGeo, coreMat);
+  const plumeMesh = new THREE.Mesh(plumeGeo, plumeMat);
+  coreMesh.visible = false;
+  plumeMesh.visible = false;
+  abGroup.add(plumeMesh);
+  abGroup.add(coreMesh);
+
+  // soft glow sprite (helps it “pop”)
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: sharedSoftTexture,
+    color: 0xffaa33,
+    transparent: true,
+    opacity: 0.85,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending
+  }));
+  glow.position.set(0, 0, 0.2);
+  glow.scale.set(2.2, 2.2, 1);
+  glow.visible = false;
+  abGroup.add(glow);
+
+  root.userData.ab = {
+    nozzle,
+    coreMesh, plumeMesh, glow,
+    coreMat, plumeMat,
+    intensity: 0
+  };
 
   // Tail
   const tailGeo = new THREE.BoxGeometry(0.12, 3.1, 3);
@@ -1384,20 +1682,11 @@ function createJetMesh() {
   root.userData.vaporL = vaporL;
   root.userData.vaporR = vaporR;
 
-  // dust
-  const dustMat = new THREE.MeshBasicMaterial({ color: 0xaaaaaa, transparent: true, opacity: 0.0, depthWrite: false });
-  const dustGeo = new THREE.PlaneGeometry(6, 3);
-  dustGeo.rotateX(-Math.PI / 2);
-  const dust = new THREE.Mesh(dustGeo, dustMat);
-  dust.position.set(0, -1.2, 1);
-  root.add(dust);
-  root.userData.dust = dust;
-
   return root;
 }
 
 /* =========================
-   World creation (mountains + triangle grid + runway + trees)
+   World creation
 ========================= */
 function createWorld() {
   const size = WORLD.size;
@@ -1409,7 +1698,7 @@ function createWorld() {
 
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i);
-    const zPlane = pos.getY(i); // becomes world Z after rotate
+    const zPlane = pos.getY(i);
     const worldH = getTerrainMeshWorldHeight_Analytic(x, zPlane);
     const localZ = worldH - WORLD.groundY;
     pos.setZ(i, localZ);
@@ -1500,7 +1789,6 @@ function createWorld() {
     const x = (Math.random() - 0.5) * 4500;
     const z = (Math.random() - 0.5) * 4500;
 
-    // don't put trees on runway zone
     if (Math.abs(x) < RUNWAY.halfW + 20 && Math.abs(z) < RUNWAY.halfL + 200) continue;
 
     const y = getGroundHeight(x, z);
@@ -1540,7 +1828,6 @@ function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.1);
 
-  // Freeze sim while paused (render only)
   if (paused) {
     renderer.render(scene, camera);
     return;
@@ -1549,7 +1836,7 @@ function animate() {
   updatePhysics(dt);
   updateGearAnimation(dt);
 
-  // Flares deployed with "F" (hold = burst, same cooldown behavior as flare demo)
+  // Flares deployed with "F" (hold = burst)
   if (gameActive && sim && !sim.crashed && keys['KeyF']) {
     const now = Date.now();
     if (now - lastFlareTime > FLARE_COOLDOWN) {
@@ -1560,6 +1847,7 @@ function animate() {
 
   updateFlares(dt);
   updateParticles(dt);
+  updateDust(dt);
 
   updateHUD();
   updateCamera();
