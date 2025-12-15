@@ -578,7 +578,7 @@ function updateGearAnimation(dt) {
   if (!plane) return;
 
   // Slower animation speed
-  const speed = 3.0; // lower = slower
+  const speed = 2.5; // lower = slower
   sim.gearPos += (sim.gearTarget - sim.gearPos) * (1 - Math.exp(-speed * dt));
 
   // ease
