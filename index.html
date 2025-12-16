@@ -155,8 +155,14 @@
   <div class="hud-row"><span class="hud-label">AOA:</span> <span id="aoa-display">0</span>°</div>
   <div class="hud-row"><span class="hud-label">G:</span> <span id="g-display">1.0</span></div>
   <div class="hud-row"><span class="hud-label">GEAR:</span> <span id="gear-display">DWN</span></div>
+
   <div id="brake-warning" class="warning">BRAKE</div>
   <div id="stall-warning" class="warning">STALL</div>
+
+  <!-- NEW WARNINGS -->
+  <div id="terrain-warning" class="warning">TERRAIN</div>
+  <div id="overg-warning" class="warning">OVER G</div>
+  <div id="pullup-warning" class="warning">PULL UP</div>
 </div>
 
 <div id="controls-help">
@@ -1173,7 +1179,10 @@ function updateHUD() {
 
   const spd = Math.round(sim.vel.length() * 1.9438);
   const groundBelow = getGroundHeight(sim.pos.x, sim.pos.z);
-  const alt = Math.round((sim.pos.y - (groundBelow + 1.35)) * 3.2808);
+
+  // AGL (feet)
+  const aglFtRaw = (sim.pos.y - (groundBelow + 1.35)) * 3.2808;
+  const alt = Math.round(aglFtRaw);
 
   const fwd = new THREE.Vector3(0,0,-1).applyQuaternion(sim.quat);
   let hdg = Math.round(Math.atan2(-fwd.x, -fwd.z) * 180 / Math.PI);
@@ -1222,6 +1231,18 @@ function updateHUD() {
 
   document.getElementById('stall-warning').style.display = sim.stalled ? 'block' : 'none';
   document.getElementById('brake-warning').style.display = (sim.airBrake && sim.onGround) ? 'block' : 'none';
+
+  // --- NEW warnings ---
+  const offRunway = !isOnRunwayXZ(sim.pos.x, sim.pos.z);
+
+  const pullUpWarn  = (!sim.onGround && aglFtRaw <= 75);
+  const terrainWarn = (!sim.onGround && offRunway && aglFtRaw <= 200);
+  const overGWarn   = ((sim.gLoad || 1.0) >= 9.0);
+
+  // Priority: PULL UP overrides TERRAIN (OVER G can show anytime)
+  document.getElementById('pullup-warning').style.display  = pullUpWarn ? 'block' : 'none';
+  document.getElementById('terrain-warning').style.display = (!pullUpWarn && terrainWarn) ? 'block' : 'none';
+  document.getElementById('overg-warning').style.display   = overGWarn ? 'block' : 'none';
 
   // throttle bar
   let barHeight = input.throttle * 100;
