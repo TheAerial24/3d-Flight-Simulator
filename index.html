@@ -1329,7 +1329,7 @@ function resetPlane() {
 function createJetMesh() {
   const root = new THREE.Group();
 
-  // --- Materials (keep your style) ---
+  // Materials (same vibe as your old jet)
   const matBody = new THREE.MeshStandardMaterial({
     color: VISUALS.colors.fuselage,
     metalness: 0.7,
@@ -1355,178 +1355,193 @@ function createJetMesh() {
     emissiveIntensity: 0.4
   });
 
-  // === Dimensions (tuned to “Tinkercad jet” proportions) ===
-  const L = 15.5;          // length
-  const fuseR0 = 0.95;
-  const fuseR1 = 0.75;
-  const wingSpan = 13.2;   // tip-to-tip
-  const wingHalf = wingSpan * 0.5;
-  const tailZ = 7.3;       // tail position along +Z
-  const noseZ = -7.9;      // nose along -Z
-
-  // --- Fuselage ---
-  const fuse = new THREE.Mesh(new THREE.CylinderGeometry(fuseR1, fuseR0, 11.8, 28), matBody);
+  // -------------------------
+  // Fuselage (rounded nose, single engine)
+  // -------------------------
+  const fuse = new THREE.Mesh(new THREE.CylinderGeometry(0.78, 0.86, 12.2, 28), matBody);
   fuse.rotation.x = -Math.PI / 2;
   fuse.castShadow = true;
   root.add(fuse);
 
-  // --- Nose (slightly longer, pointier) ---
-  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.72, 3.3, 28), matBody);
-  nose.rotation.x = -Math.PI / 2;
-  nose.position.z = noseZ;
-  nose.castShadow = true;
-  root.add(nose);
+  // Rounded nose: cone + sphere cap
+  const noseCone = new THREE.Mesh(new THREE.ConeGeometry(0.82, 3.3, 28), matBody);
+  noseCone.rotation.x = -Math.PI / 2;
+  noseCone.position.z = -7.6;
+  noseCone.castShadow = true;
+  root.add(noseCone);
 
-  // --- Canopy (bigger bubble like your STL) ---
-  const canopy = new THREE.Mesh(new THREE.CapsuleGeometry(0.62, 2.1, 8, 18), matGlass);
+  const noseCap = new THREE.Mesh(new THREE.SphereGeometry(0.55, 20, 14), matBody);
+  noseCap.position.set(0, 0, -9.0);
+  noseCap.castShadow = true;
+  root.add(noseCap);
+
+  // Canopy bubble (top view shows oval canopy)
+  const canopy = new THREE.Mesh(new THREE.CapsuleGeometry(0.62, 2.0, 8, 18), matGlass);
   canopy.rotation.x = -Math.PI / 2;
-  canopy.position.set(0, 0.95, -3.5);
+  canopy.position.set(0, 0.92, -4.2);
   canopy.castShadow = true;
   root.add(canopy);
 
-  // --- Wing planform (swept + chunky, closer to STL silhouette) ---
-  const wingShape = new THREE.Shape();
-  wingShape.moveTo(0, 0);
-  wingShape.lineTo(5.9, 1.2);   // leading edge out
-  wingShape.lineTo(5.2, 2.6);   // tip taper
-  wingShape.lineTo(0.6, 2.1);   // trailing edge in
-  wingShape.lineTo(0, 0);
+  // -------------------------
+  // Main wings (triangle/swept trapezoid like your screenshots)
+  // Using Shape in (x, z) then extrude thickness upward.
+  // -------------------------
+  function makeWingHalf() {
+    const s = new THREE.Shape();
+    // x = span outboard, y = chord mapped to world Z after rotate
+    s.moveTo(0.0, -0.7);   // root leading
+    s.lineTo(6.4,  0.9);   // tip leading (swept back)
+    s.lineTo(6.0,  3.0);   // tip trailing (clipped)
+    s.lineTo(0.0,  2.2);   // root trailing
+    s.lineTo(0.0, -0.7);
 
-  const wingGeo = new THREE.ExtrudeGeometry(wingShape, {
-    depth: 0.12,
-    bevelEnabled: true,
-    bevelThickness: 0.03,
-    bevelSize: 0.06,
-    bevelSegments: 4
-  });
-  wingGeo.rotateX(Math.PI / 2);
+    const geo = new THREE.ExtrudeGeometry(s, {
+      depth: 0.14,
+      bevelEnabled: true,
+      bevelThickness: 0.03,
+      bevelSize: 0.06,
+      bevelSegments: 4
+    });
 
-  const wingL = new THREE.Mesh(wingGeo, matBody);
-  wingL.position.set(0.2, 0.05, 0.9);
-  wingL.castShadow = true;
+    // Put it flat: shape y -> world z, extrude z -> world y
+    geo.rotateX(Math.PI / 2);
+    geo.translate(0, 0.02, 0); // small lift
+
+    const m = new THREE.Mesh(geo, matBody);
+    m.castShadow = true;
+    return m;
+  }
+
+  const wingL = makeWingHalf();
+  wingL.position.set(0.25, 0.0, -0.1);
   root.add(wingL);
 
   const wingR = wingL.clone();
   wingR.scale.x *= -1;
   root.add(wingR);
 
-  // --- Wingtip “pods” (simple, helps match STL vibe) ---
-  const podGeo = new THREE.CylinderGeometry(0.14, 0.14, 1.3, 12);
-  podGeo.rotateX(Math.PI / 2);
-  const podL = new THREE.Mesh(podGeo, matBody);
-  podL.position.set(wingHalf - 0.9, 0.05, 1.8);
-  podL.castShadow = true;
-  root.add(podL);
+  // -------------------------
+  // Tailplanes (small swept stabs)
+  // -------------------------
+  function makeStabHalf() {
+    const s = new THREE.Shape();
+    s.moveTo(0.0, -0.3);
+    s.lineTo(2.5,  0.4);
+    s.lineTo(2.2,  1.4);
+    s.lineTo(0.0,  1.0);
+    s.lineTo(0.0, -0.3);
 
-  const podR = podL.clone();
-  podR.position.x *= -1;
-  root.add(podR);
+    const geo = new THREE.ExtrudeGeometry(s, {
+      depth: 0.12,
+      bevelEnabled: true,
+      bevelThickness: 0.02,
+      bevelSize: 0.04,
+      bevelSegments: 3
+    });
+    geo.rotateX(Math.PI / 2);
+    geo.translate(0, 0.02, 0);
+    const m = new THREE.Mesh(geo, matBody);
+    m.castShadow = true;
+    return m;
+  }
 
-  // --- Vertical tail (tall fin) ---
-  const fin = new THREE.Mesh(new THREE.BoxGeometry(0.16, 3.8, 2.8), matBody);
-  fin.position.set(0, 2.1, 5.2);
-  fin.rotation.x = 0.6;
+  const stabL = makeStabHalf();
+  stabL.position.set(0.35, 0.05, 4.6);
+  root.add(stabL);
+
+  const stabR = stabL.clone();
+  stabR.scale.x *= -1;
+  root.add(stabR);
+
+  // -------------------------
+  // Vertical fin (tall swept)
+  // -------------------------
+  const finGeo = new THREE.BoxGeometry(0.18, 4.0, 2.9);
+  finGeo.translate(0, 1.8, 0.3);
+  const fin = new THREE.Mesh(finGeo, matBody);
+  fin.position.set(0, 0.15, 4.9);
+  fin.rotation.x = 0.55;
   fin.castShadow = true;
   root.add(fin);
 
-  // --- Horizontal stabs ---
-  const stab = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.14, 2.1), matBody);
-  stab.position.set(0, 0.35, 5.3);
-  stab.rotation.x = -0.08;
-  stab.castShadow = true;
-  root.add(stab);
-
-  // --- Air brakes (keep your existing behavior/IDs) ---
-  const airBrakeGeo = new THREE.BoxGeometry(0.12, 0.6, 1.6);
-  airBrakeGeo.translate(0, 0, 0.8);
+  // -------------------------
+  // Air brakes (keep your sim hook + animation)
+  // -------------------------
+  const airBrakeGeo = new THREE.BoxGeometry(0.12, 0.6, 1.5);
+  airBrakeGeo.translate(0, 0, 0.75);
 
   const brakeL = new THREE.Mesh(airBrakeGeo, matBody);
-  brakeL.position.set(0.95, 0.05, 3.9);
+  brakeL.position.set(0.9, 0.05, 3.9);
   brakeL.castShadow = true;
   root.add(brakeL);
 
   const brakeR = new THREE.Mesh(airBrakeGeo, matBody);
-  brakeR.position.set(-0.95, 0.05, 3.9);
+  brakeR.position.set(-0.9, 0.05, 3.9);
   brakeR.castShadow = true;
   root.add(brakeR);
 
   root.userData.airBrakeL = brakeL;
   root.userData.airBrakeR = brakeR;
 
-  // --- Engines / Exhausts (twin) ---
-  const exGeo = new THREE.CylinderGeometry(0.55, 0.48, 1.0, 22);
-  exGeo.rotateX(Math.PI / 2);
+  // -------------------------
+  // Single exhaust + afterburner flames (CENTERED)
+  // IMPORTANT: afterburner meshes exist + are positioned so your updatePhysics() visuals line up.
+  // -------------------------
+  const exGeo = new THREE.CylinderGeometry(0.78, 0.70, 0.9, 24);
+  const exMesh = new THREE.Mesh(exGeo, matExhaust);
+  exMesh.rotation.x = -Math.PI / 2;
+  exMesh.position.set(0, 0, 6.2);
+  exMesh.castShadow = true;
+  root.add(exMesh);
 
-  const exL = new THREE.Mesh(exGeo, matExhaust);
-  exL.position.set(0.55, 0.0, 6.2);
-  exL.castShadow = true;
-  root.add(exL);
-
-  const exR = exL.clone();
-  exR.position.x *= -1;
-  root.add(exR);
-
-  // --- Afterburner flames (keeps your existing updatePhysics scaling) ---
-  // We build TWO groups (outer/inner), each containing left+right cones.
-  const outerConeGeo = new THREE.ConeGeometry(0.45, 3.8, 16, 1, true);
-  outerConeGeo.translate(0, 1.9, 0);
-  outerConeGeo.rotateX(Math.PI / 2);
-
-  const innerConeGeo = new THREE.ConeGeometry(0.28, 2.9, 16, 1, true);
-  innerConeGeo.translate(0, 1.45, 0);
-  innerConeGeo.rotateX(Math.PI / 2);
+  // Afterburner flames (same “two cones” contract your code expects)
+  const outerGeo = new THREE.ConeGeometry(0.55, 4.0, 16, 1, true);
+  outerGeo.translate(0, 2.0, 0);
+  outerGeo.rotateX(Math.PI / 2);
 
   const abOuterMat = new THREE.MeshBasicMaterial({
     color: 0xffaa33, transparent: true, opacity: 0.55,
     blending: THREE.AdditiveBlending, depthWrite: false
   });
+  const flameOuter = new THREE.Mesh(outerGeo, abOuterMat);
+  flameOuter.position.set(0, 0, 6.6);
+  flameOuter.visible = false;
+  root.add(flameOuter);
+
+  const innerGeo = new THREE.ConeGeometry(0.34, 3.0, 16, 1, true);
+  innerGeo.translate(0, 1.5, 0);
+  innerGeo.rotateX(Math.PI / 2);
 
   const abInnerMat = new THREE.MeshBasicMaterial({
     color: 0x66c9ff, transparent: true, opacity: 0.8,
     blending: THREE.AdditiveBlending, depthWrite: false
   });
+  const flameInner = new THREE.Mesh(innerGeo, abInnerMat);
+  flameInner.position.set(0, 0, 6.72);
+  flameInner.visible = false;
+  root.add(flameInner);
 
-  const flameOuterGroup = new THREE.Group();
-  flameOuterGroup.position.set(0, 0, 6.75);
-  flameOuterGroup.visible = false;
-  root.add(flameOuterGroup);
+  root.userData.afterburners = [flameOuter, flameInner];
 
-  const flameInnerGroup = new THREE.Group();
-  flameInnerGroup.position.set(0, 0, 6.85);
-  flameInnerGroup.visible = false;
-  root.add(flameInnerGroup);
-
-  const outerL = new THREE.Mesh(outerConeGeo, abOuterMat);
-  outerL.position.x = 0.55;
-  flameOuterGroup.add(outerL);
-
-  const outerR = outerL.clone();
-  outerR.position.x = -0.55;
-  flameOuterGroup.add(outerR);
-
-  const innerL = new THREE.Mesh(innerConeGeo, abInnerMat);
-  innerL.position.x = 0.55;
-  flameInnerGroup.add(innerL);
-
-  const innerR = innerL.clone();
-  innerR.position.x = -0.55;
-  flameInnerGroup.add(innerR);
-
-  root.userData.afterburners = [flameOuterGroup, flameInnerGroup];
-
-  // --- Landing gear (positions tuned so they line up under the new body) ---
+  // -------------------------
+  // Landing gear (same pivots your sim animates)
+  // -------------------------
   const gearGroup = new THREE.Group();
   root.add(gearGroup);
   root.userData.gearGroup = gearGroup;
 
-  const tireGeo = new THREE.CylinderGeometry(0.36, 0.36, 0.26, 16);
+  const tireGeo = new THREE.CylinderGeometry(0.35, 0.35, 0.25, 16);
   tireGeo.rotateZ(Math.PI / 2);
-  const tireMat = new THREE.MeshStandardMaterial({ color: VISUALS.colors.tire, roughness: 0.9, metalness: 0.0 });
+  const tireMat = new THREE.MeshStandardMaterial({
+    color: VISUALS.colors.tire,
+    roughness: 0.9,
+    metalness: 0.0
+  });
 
   // Nose gear pivot
   const nosePivot = new THREE.Group();
   gearGroup.add(nosePivot);
-  nosePivot.position.set(0, -0.9, -5.3);
+  nosePivot.position.set(0, -0.9, -5.2);
   root.userData.nosePivot = nosePivot;
 
   const noseWheel = new THREE.Mesh(tireGeo, tireMat);
@@ -1534,10 +1549,10 @@ function createJetMesh() {
   noseWheel.castShadow = true;
   nosePivot.add(noseWheel);
 
-  // Main left
+  // Main gear pivots (under wing root area)
   const mainLPivot = new THREE.Group();
   gearGroup.add(mainLPivot);
-  mainLPivot.position.set(1.55, -0.9, 1.6);
+  mainLPivot.position.set(1.5, -0.9, 1.8);
   root.userData.mainLPivot = mainLPivot;
 
   const mainWheelL = new THREE.Mesh(tireGeo, tireMat);
@@ -1545,10 +1560,9 @@ function createJetMesh() {
   mainWheelL.castShadow = true;
   mainLPivot.add(mainWheelL);
 
-  // Main right
   const mainRPivot = new THREE.Group();
   gearGroup.add(mainRPivot);
-  mainRPivot.position.set(-1.55, -0.9, 1.6);
+  mainRPivot.position.set(-1.5, -0.9, 1.8);
   root.userData.mainRPivot = mainRPivot;
 
   const mainWheelR = new THREE.Mesh(tireGeo, tireMat);
@@ -1556,17 +1570,24 @@ function createJetMesh() {
   mainWheelR.castShadow = true;
   mainRPivot.add(mainWheelR);
 
-  // --- Vapor planes (keep IDs) ---
-  const vaporMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.0, depthWrite: false });
-  const vaporGeo = new THREE.PlaneGeometry(2.2, 0.45);
+  // -------------------------
+  // Vapor planes (keep IDs)
+  // -------------------------
+  const vaporMat = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.0,
+    depthWrite: false
+  });
+  const vaporGeo = new THREE.PlaneGeometry(2.0, 0.4);
 
   const vaporL = new THREE.Mesh(vaporGeo, vaporMat);
-  vaporL.position.set(3.7, 0.05, 1.8);
+  vaporL.position.set(3.9, 0.05, 1.6);
   vaporL.rotation.y = Math.PI / 2;
   root.add(vaporL);
 
   const vaporR = new THREE.Mesh(vaporGeo, vaporMat.clone());
-  vaporR.position.set(-3.7, 0.05, 1.8);
+  vaporR.position.set(-3.9, 0.05, 1.6);
   vaporR.rotation.y = -Math.PI / 2;
   root.add(vaporR);
 
@@ -1575,7 +1596,6 @@ function createJetMesh() {
 
   return root;
 }
-
 
 /* =========================
    World creation
