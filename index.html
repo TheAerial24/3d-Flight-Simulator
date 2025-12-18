@@ -1522,16 +1522,19 @@ function createJetMesh() {
   root.add(intakeInnerR);
 
   // -----------------------
-  // Twin exhaust nozzles
+  // Twin exhaust nozzles (aligned to nacelles)
   // -----------------------
-  const nozzleGeo = new THREE.CylinderGeometry(0.62, 0.54, 1.05, 24);
-  nozzleGeo.rotateX(Math.PI / 2);
+  const nozzleLen = 1.05;
+  const nozzleGeo = new THREE.CylinderGeometry(0.62, 0.54, nozzleLen, 24);
+  nozzleGeo.rotateX(Math.PI / 2); // axis -> Z
 
-  const nozzleOffsetX = 0.68;
-  const nozzleZ = 6.35;
+  // align nozzles with nacelle centers and keep them inside fuselage length
+  const nozzleOffsetX = 0.78; // matches nacelle X
+  const nozzleZ = 5.70;       // moved forward from earlier to sit at the nacelle aft end
+  const nozzleY = -0.12;
 
   const exL = new THREE.Mesh(nozzleGeo, matExhaust);
-  exL.position.set(nozzleOffsetX, -0.10, nozzleZ);
+  exL.position.set(nozzleOffsetX, nozzleY, nozzleZ);
   exL.castShadow = true;
   root.add(exL);
 
@@ -1540,16 +1543,16 @@ function createJetMesh() {
   root.add(exR);
 
   // -----------------------
-  // Afterburners (FIXED: use InstancedMesh so they *cannot* drift)
-  // Keeps sim hook: root.userData.afterburners = [outer, inner]
+  // Afterburners (HARD-LINED-UP: parented to each nozzle)
+  // Keep sim hook: root.userData.afterburners = [outerObject, innerObject]
   // -----------------------
-  const outerFlameGeo = new THREE.ConeGeometry(0.48, 3.8, 16, 1, true);
-  outerFlameGeo.translate(0, 1.9, 0);
-  outerFlameGeo.rotateX(Math.PI / 2);
+  const outerGeo = new THREE.ConeGeometry(0.48, 3.8, 16, 1, true);
+  outerGeo.translate(0, 1.9, 0);     // base at origin before rotate
+  outerGeo.rotateX(Math.PI / 2);     // cone points along +Z
 
-  const innerFlameGeo = new THREE.ConeGeometry(0.29, 2.85, 16, 1, true);
-  innerFlameGeo.translate(0, 1.425, 0);
-  innerFlameGeo.rotateX(Math.PI / 2);
+  const innerGeo = new THREE.ConeGeometry(0.29, 2.85, 16, 1, true);
+  innerGeo.translate(0, 1.425, 0);
+  innerGeo.rotateX(Math.PI / 2);
 
   const abOuterMat = new THREE.MeshBasicMaterial({
     color: 0xffaa33, transparent: true, opacity: 0.55,
@@ -1561,43 +1564,65 @@ function createJetMesh() {
     blending: THREE.AdditiveBlending, depthWrite: false
   });
 
-  const flameOuter = new THREE.InstancedMesh(outerFlameGeo, abOuterMat, 2);
-  const flameInner = new THREE.InstancedMesh(innerFlameGeo, abInnerMat, 2);
+  // Two controller objects (what your sim toggles)
+  const flameOuter = new THREE.Group();
+  const flameInner = new THREE.Group();
+  flameOuter.visible = false;
+  flameInner.visible = false;
+  root.add(flameOuter);
+  root.add(flameInner);
+
+  // nozzle exit is at +nozzleLen/2 in local Z (because nozzle axis is Z)
+  const nozzleExit = nozzleLen * 0.5;
+
+  // small extra push behind the rim so it doesn't clip
+  const OUTER_PUSH = nozzleExit + 0.06;
+  const INNER_PUSH = nozzleExit + 0.14;
+
+  function attachFlamesToNozzle(nozzleMesh) {
+    // Outer
+    const o = new THREE.Mesh(outerGeo, abOuterMat);
+    o.position.set(0, 0, OUTER_PUSH);
+    nozzleMesh.add(o);
+
+    // Inner
+    const i = new THREE.Mesh(innerGeo, abInnerMat);
+    i.position.set(0, 0, INNER_PUSH);
+    nozzleMesh.add(i);
+
+    // Put them under the controller groups too (for visibility toggles)
+    // by adding "proxy" references (no reparenting) via userData lists.
+    return { o, i };
+  }
+
+  const flamesL = attachFlamesToNozzle(exL);
+  const flamesR = attachFlamesToNozzle(exR);
+
+  // Controllers toggle the real meshes (your sim can keep using .visible on these two)
+  flameOuter.userData.targets = [flamesL.o, flamesR.o];
+  flameInner.userData.targets = [flamesL.i, flamesR.i];
+
+  // If your sim ONLY does: afterburners[n].visible = bool
+  // this ensures it still works:
+  Object.defineProperty(flameOuter, "visible", {
+    get() { return this._v ?? false; },
+    set(v) {
+      this._v = !!v;
+      for (const t of this.userData.targets) t.visible = this._v;
+    }
+  });
+  Object.defineProperty(flameInner, "visible", {
+    get() { return this._v ?? false; },
+    set(v) {
+      this._v = !!v;
+      for (const t of this.userData.targets) t.visible = this._v;
+    }
+  });
+
+  // Initialize off
   flameOuter.visible = false;
   flameInner.visible = false;
 
-  // Offsets from nozzle center to flame start (tweak if you want)
-  const OUTER_Z = 0.55;
-  const INNER_Z = 0.65;
-
-  const _m = new THREE.Matrix4();
-  const _q = new THREE.Quaternion();
-  const _s = new THREE.Vector3(1, 1, 1);
-  const _p = new THREE.Vector3();
-
-  // instance 0 = left nozzle
-  _p.set(exL.position.x, exL.position.y, exL.position.z + OUTER_Z);
-  _m.compose(_p, _q, _s);
-  flameOuter.setMatrixAt(0, _m);
-
-  _p.set(exL.position.x, exL.position.y, exL.position.z + INNER_Z);
-  _m.compose(_p, _q, _s);
-  flameInner.setMatrixAt(0, _m);
-
-  // instance 1 = right nozzle
-  _p.set(exR.position.x, exR.position.y, exR.position.z + OUTER_Z);
-  _m.compose(_p, _q, _s);
-  flameOuter.setMatrixAt(1, _m);
-
-  _p.set(exR.position.x, exR.position.y, exR.position.z + INNER_Z);
-  _m.compose(_p, _q, _s);
-  flameInner.setMatrixAt(1, _m);
-
-  flameOuter.instanceMatrix.needsUpdate = true;
-  flameInner.instanceMatrix.needsUpdate = true;
-
-  root.add(flameOuter);
-  root.add(flameInner);
   root.userData.afterburners = [flameOuter, flameInner];
 
   // -----------------------
@@ -1634,26 +1659,37 @@ function createJetMesh() {
   root.add(stabR);
 
   // -----------------------
-  // Twin vertical stabilizers (CANTED OUTWARD more)
-  // Outward cant = rotate around Z (roll), NOT forward/back pitch.
+  // Twin vertical stabilizers
+  // - longer "frontways" (more chord in Z)
+  // - tilted outward (cant)
+  // - tilted backward toward camera (rake back)
   // -----------------------
-  function makeFin() {
+  function makeFinMesh() {
+    // Shape x = chord (forward/back), y = height
     const finShape = new THREE.Shape();
-    finShape.moveTo(0.0, 0.0);
-    finShape.lineTo(0.0, 3.75);
-    finShape.lineTo(1.25, 3.15);
-    finShape.lineTo(1.05, 0.25);
-    finShape.lineTo(0.0, 0.0);
+    finShape.moveTo(-0.65, 0.0);  // leading base (forward)
+    finShape.lineTo(-0.20, 4.05); // leading edge up (slight sweep)
+    finShape.lineTo( 1.65, 3.45); // trailing top (longer chord)
+    finShape.lineTo( 2.35, 0.28); // trailing base (aft)
+    finShape.lineTo(-0.65, 0.0);
 
+    const thickness = 0.18;
     const finGeo = new THREE.ExtrudeGeometry(finShape, {
-      depth: 0.18,
+      depth: thickness,
       bevelEnabled: true,
       bevelThickness: 0.02,
       bevelSize: 0.02,
       bevelSegments: 2
     });
 
+    // Rotate so:
+    // - shape X becomes world Z (front/back)
+    // - extrude depth becomes world X (thickness)
     finGeo.rotateY(Math.PI / 2);
+
+    // Center thickness around X=0 (so it sits nicely on the spine)
+    finGeo.translate(-thickness * 0.5, 0, 0);
+
     const fin = new THREE.Mesh(finGeo, matBody);
     fin.castShadow = true;
     return fin;
@@ -1663,18 +1699,29 @@ function createJetMesh() {
   const finX = 0.72;
   const finY = 0.15;
 
-  const CANT_DEG = 33; // <-- more outward cant
-  const cant = CANT_DEG * Math.PI / 180;
+  const outwardCantDeg = 35; // outward lean
+  const backTiltDeg   = 12; // top tilts toward +Z (rear / chase camera)
 
-  const finL = makeFin();
-  finL.position.set(finX, finY, finZ);
-  finL.rotation.set(0, 0, -cant); // outward
-  root.add(finL);
+  const cant = outwardCantDeg * Math.PI / 180;
+  const back = backTiltDeg * Math.PI / 180;
 
-  const finR = makeFin();
-  finR.position.set(-finX, finY, finZ);
-  finR.rotation.set(0, 0, cant); // outward
-  root.add(finR);
+  const finPivotL = new THREE.Group();
+  finPivotL.position.set(finX, finY, finZ);
+  finPivotL.rotation.z = -cant; // outward
+  finPivotL.rotation.x = back;  // backward (toward camera)
+  root.add(finPivotL);
+
+  const finL = makeFinMesh();
+  finPivotL.add(finL);
+
+  const finPivotR = new THREE.Group();
+  finPivotR.position.set(-finX, finY, finZ);
+  finPivotR.rotation.z = cant;  // outward
+  finPivotR.rotation.x = back;  // backward (toward camera)
+  root.add(finPivotR);
+
+  const finR = makeFinMesh();
+  finPivotR.add(finR);
 
   // -----------------------
   // Air brakes (dorsal pair)
