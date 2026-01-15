@@ -692,8 +692,8 @@ function startGame() {
 
 function init() {
   PHYSICS = {
-    mass: 3500,
-    gravity: 9.81,
+    mass: 3490,
+    gravity: 9.80,
     airDensity: 1.225,
     wingArea: 24.0,
 
@@ -701,7 +701,7 @@ function init() {
     inducedDragFactor: 0.06,
     liftSlope: 7.5,
     maxLiftCoeff: 1.6,
-    stallAngle: 0.45,
+    stallAngle: 0.49,
     wingIncidence: 0.02,
 
     maxThrust: 70000,
@@ -710,10 +710,10 @@ function init() {
     damping: new THREE.Vector3(2.5, 1.0, 5.0),
 
     wheelBrakes: 15000,
-    wheelFriction: 0.09,
+    wheelFriction: 0.1,
     wheelSideFriction: 15000,
-    suspensionStiffness: 65000,
-    suspensionDamping: 4000
+    suspensionStiffness: 64900,
+    suspensionDamping: 4050
   };
 
   sim = {
