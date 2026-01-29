@@ -1990,5 +1990,195 @@ function animate() {
 
 window.addEventListener('load', init);
 </script>
+  /* ======= REPLACE or MERGE this into your existing updateInputs() ======= */
+function updateInputs() {
+  if (!gameActive) return;
+
+  let kYaw = (keys['KeyQ'] ? 1 : 0) - (keys['KeyE'] ? 1 : 0);
+
+  if (keys['KeyW']) input.throttle += 0.015;
+  if (keys['KeyS']) input.throttle -= 0.02;
+  input.throttle = THREE.MathUtils.clamp(input.throttle, 0, 1);
+
+  sim.afterburner = !!keys['KeyA'];
+  sim.airBrake    = !!keys['Space'];
+
+  let keyPitchCmd = 0;
+  if (keys['ArrowDown']) keyPitchCmd = 1;
+  if (keys['ArrowUp']) keyPitchCmd = -1;
+
+  let keyRollCmd = 0;
+  if (keys['ArrowRight']) keyRollCmd = 1;
+  if (keys['ArrowLeft']) keyRollCmd = -1;
+
+  if (sim.onGround) {
+    if (kYaw === 0 && Math.abs(keyRollCmd) > 0) kYaw = keyRollCmd * 0.5;
+  }
+
+  input.pitch = THREE.MathUtils.clamp(keyPitchCmd, -1, 1);
+  input.roll  = THREE.MathUtils.clamp(keyRollCmd, -1, 1);
+  input.yaw   = THREE.MathUtils.clamp(kYaw, -1, 1);
+
+  // --------- EJECTION CONTROL (press Y) ----------
+  // Detect rising edge of the Y key to start the ejection sequence
+  if (!sim.ejecting) {
+    if (keys['KeyY'] && !sim._prevEjectKey) {
+      attemptEjection();
+    }
+  }
+  sim._prevEjectKey = !!keys['KeyY'];
+}
+/* ====================================================================== */
+
+/* ======= ADD the following helper code somewhere near your other globals/functions ======= */
+// Simple ejection seat + parachute system.
+// Minimal dependencies: THREE, scene, plane, sim (velocity/quaternion), and sim.vel used by your sim.
+
+sim.ejecting = false;
+sim.ejectData = null;
+sim._prevEjectKey = false;
+
+function attemptEjection() {
+  // Basic safety checks
+  if (sim.crashed) return;
+  // If you prefer to prevent ejection on very low altitude, uncomment the check below:
+  // if (plane.position.y < 5) { console.log("Too low to eject safely"); return; }
+  if (sim.onGround) {
+    console.log("Cannot eject while on ground");
+    return;
+  }
+
+  initiateEjection();
+}
+
+function initiateEjection() {
+  if (!plane || !scene) return;
+
+  // Create the seat+pilot group (simple geometry, easy to replace with a model)
+  const seatGroup = new THREE.Group();
+
+  // seat body
+  const seatGeo = new THREE.BoxGeometry(0.45, 0.6, 0.4);
+  const seatMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
+  const seatMesh = new THREE.Mesh(seatGeo, seatMat);
+  seatMesh.position.set(0, 0, 0);
+  seatMesh.castShadow = true;
+  seatGroup.add(seatMesh);
+
+  // pilot (simple head + torso)
+  const pilotTorso = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8), new THREE.MeshStandardMaterial({ color: 0xffcc99 }));
+  pilotTorso.position.set(0, 0.32, 0);
+  pilotTorso.castShadow = true;
+  seatGroup.add(pilotTorso);
+
+  // initial world position: approximate cockpit seat location (local offset)
+  const localOffset = new THREE.Vector3(0, 0.75, -1.15); // tweak if your cockpit origin differs
+  const spawnPos = plane.position.clone();
+  localOffset.applyQuaternion(sim.quat);
+  spawnPos.add(localOffset);
+
+  seatGroup.position.copy(spawnPos);
+  seatGroup.quaternion.copy(sim.quat);
+
+  // initial velocity = plane velocity + ejection impulse (local coords -> world)
+  const ejectImpulseLocal = new THREE.Vector3(0, 8.0, -18.0); // up and back relative to aircraft
+  const ejectImpulse = ejectImpulseLocal.clone().applyQuaternion(sim.quat);
+  const initialVel = (sim.vel ? sim.vel.clone() : new THREE.Vector3()) .clone().add(ejectImpulse);
+
+  scene.add(seatGroup);
+
+  // store eject data
+  sim.ejecting = true;
+  sim.ejectData = {
+    group: seatGroup,
+    velocity: initialVel,
+    age: 0,
+    stage: 'seat', // stages: 'seat' -> 'parachute' -> 'landed'
+    canopy: null
+  };
+
+  // Optional: remove/hide any pilot model inside the plane if you have one:
+  // if (plane.userData && plane.userData.pilotMesh) plane.userData.pilotMesh.visible = false;
+
+  // Optional: give the plane a physical reaction (kickback). If you want the plane to get a small rear impulse:
+  // if (sim.vel) sim.vel.add(new THREE.Vector3(0, 0.5, 4).applyQuaternion(sim.quat));
+}
+
+// This must be called each frame from updatePhysics(dt) (right after updateInputs())
+function updateEjection(dt) {
+  if (!sim.ejecting || !sim.ejectData) return;
+  const ed = sim.ejectData;
+  ed.age += dt;
+
+  // Basic physics
+  // gravity
+  ed.velocity.y -= 9.81 * dt;
+
+  // simple drag (tunable)
+  const dragCoeff = 0.55; // higher => quicker slow-down
+  ed.velocity.multiplyScalar(1 - dragCoeff * dt);
+
+  // move group
+  ed.group.position.addScaledVector(ed.velocity, dt);
+
+  // tumble rotation for realism
+  ed.group.rotation.x += dt * 3.0 * (0.7 - Math.random());
+  ed.group.rotation.z += dt * 2.0 * (0.7 - Math.random());
+
+  // After a short time, deploy the parachute (separate pilot from seat visuals if desired)
+  if (ed.stage === 'seat' && ed.age > 1.05) {
+    ed.stage = 'parachute';
+
+    // simple canopy: half-sphere scaled and attached above the pilot
+    const canopyGeo = new THREE.SphereGeometry(1.2, 12, 8, 0, Math.PI);
+    const canopyMat = new THREE.MeshStandardMaterial({ color: 0xff3333, transparent: true, opacity: 0.95, side: THREE.DoubleSide });
+    const canopy = new THREE.Mesh(canopyGeo, canopyMat);
+
+    // place canopy above the seat (visual)
+    canopy.rotation.x = Math.PI; // open downward
+    canopy.position.set(0, 0.9, 0);
+    canopy.castShadow = true;
+    ed.group.add(canopy);
+    ed.canopy = canopy;
+
+    // Immediately reduce velocity to simulate chute inflation (tune numbers for behavior)
+    ed.velocity.multiplyScalar(0.18);
+    // ensure downward speed is limited
+    if (ed.velocity.y < -4.0) ed.velocity.y = -4.0;
+  }
+
+  // optional gentle sway / stabilization when in parachute stage
+  if (ed.stage === 'parachute') {
+    // apply a gentle random lateral sway
+    const sway = new THREE.Vector3(Math.sin(ed.age * 2.3) * 0.4, 0, Math.cos(ed.age * 1.7) * 0.2);
+    ed.group.position.addScaledVector(sway, dt * 0.1);
+  }
+
+  // Land detection: when near ground, finish the sequence
+  if (ed.group.position.y <= 1.0) {
+    ed.group.position.y = 1.0;
+    ed.stage = 'landed';
+    sim.ejecting = false;
+
+    // remove seat after a short delay to let player see it landed
+    setTimeout(() => {
+      if (ed.group && ed.group.parent) scene.remove(ed.group);
+      sim.ejectData = null;
+    }, 4000);
+
+    // Optionally mark the aircraft as pilot-less / crashed, depending on how you want flight to continue.
+    // For a realistic result you may want to let the plane keep flying uncontrolled; for a simpler effect:
+    // sim.crashed = true;
+    console.log("Ejection: pilot landed (seat placed).");
+  }
+}
+/* ====================================================================== */
+
+/* ======= SMALL INTEGRATION NOTE: call updateEjection(dt) from updatePhysics(dt) ======= */
+/* In updatePhysics(dt), right after updateInputs(); add this line: */
+  // updateInputs();
+  // updateEjection(dt);
+/* That will ensure the ejection system is simulated each frame. */
+/* ====================================================================== */
 </body>
 </html>
